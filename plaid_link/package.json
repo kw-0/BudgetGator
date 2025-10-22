@@ -1,0 +1,11 @@
+{
+  "type": "module",
+  "dependencies": {
+    "body-parser": "^2.2.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "mongodb": "^6.20.0",
+    "node-fetch": "^3.3.2",
+    "react-plaid-link": "^4.1.1"
+  }
+}
