@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { Button, Text, TextInput, View } from "react-native";
+import { Button, StyleSheet, Text, TextInput, View } from "react-native";
 
 export default function LoginScreen() {
   const [username, setUsername] = useState("");
@@ -8,7 +8,7 @@ export default function LoginScreen() {
   const router = useRouter();
 
   const handleLogin = () => {
-    console.log("Username:", username);
+    console.log("Username", username);
     console.log("Password:", password);
     // Navigate to dashboard
     router.push("./dashboard");
@@ -26,17 +26,10 @@ export default function LoginScreen() {
       <Text style={{ fontSize: 24, marginBottom: 20 }}>BudgetGator Login</Text>
 
       <TextInput
-        placeholder="Username"
+        placeholder="Username/Email"
         value={username}
         onChangeText={setUsername}
-        style={{
-          width: "100%",
-          padding: 10,
-          marginVertical: 8,
-          borderWidth: 1,
-          borderColor: "#ccc",
-          borderRadius: 6,
-        }}
+        style={styles.loginboxes}
       />
 
       <TextInput
@@ -44,17 +37,20 @@ export default function LoginScreen() {
         secureTextEntry
         value={password}
         onChangeText={setPassword}
-        style={{
-          width: "100%",
-          padding: 10,
-          marginVertical: 8,
-          borderWidth: 1,
-          borderColor: "#ccc",
-          borderRadius: 6,
-        }}
+        style={styles.loginboxes}
       />
 
       <Button title="Login" onPress={handleLogin} />
     </View>
   );
 }
+const styles = StyleSheet.create({
+    loginboxes: {
+          width: "100%",
+          padding: 10,
+          marginVertical: 8,
+          borderWidth: 1,
+          borderColor: "#ccc",
+          borderRadius: 6,
+    }
+  })
