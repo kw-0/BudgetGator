@@ -1,17 +1,47 @@
+import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { Button, Text, TextInput, View } from "react-native";
+import { Alert, Button, Text, TextInput, View } from "react-native";
+
+const BASE_URL = Constants.expoConfig.extra.API_URL;
 
 export default function LoginScreen() {
-  const [username, setUsername] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const router = useRouter();
 
-  const handleLogin = () => {
-    console.log("Username:", username);
-    console.log("Password:", password);
-    // Navigate to dashboard
-    router.push("./dashboard");
+  const handleLogin = async () => {
+    if (!identifier || !password) {
+      Alert.alert("Error", "Please enter both username and password");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${BASE_URL}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          identifier: identifier, // can be username or email
+          password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        Alert.alert("Login failed", data.message || "Something went wrong");
+        return;
+      }
+
+      console.log("Login successful:", data);
+      Alert.alert("Success", "Login successful");
+
+      // Navigate to dashboard
+      router.push("./dashboard");
+    } catch (error) {
+      console.error("Error logging in:", error);
+      Alert.alert("Network Error", "Unable to connect to server");
+    }
   };
 
   return (
@@ -26,9 +56,9 @@ export default function LoginScreen() {
       <Text style={{ fontSize: 24, marginBottom: 20 }}>BudgetGator Login</Text>
 
       <TextInput
-        placeholder="Username"
-        value={username}
-        onChangeText={setUsername}
+        placeholder="Username/Email"
+        value={identifier}
+        onChangeText={setIdentifier}
         style={{
           width: "100%",
           padding: 10,
