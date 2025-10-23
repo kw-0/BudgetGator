@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
@@ -34,7 +35,8 @@ export default function LoginScreen() {
 
       console.log("Login successful:", data);
       Alert.alert("Success", "Login successful");
-
+      await AsyncStorage.setItem("userId", data.user.id);
+      
       // Navigate to dashboard
       router.push("./dashboard");
     } catch (error) {

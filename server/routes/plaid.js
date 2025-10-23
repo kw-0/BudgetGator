@@ -1,46 +1,73 @@
 const express = require('express');
 const router = express.Router();
-const plaid = require('plaid');
+const { Configuration, PlaidApi, PlaidEnvironments } = require('plaid');
 
-const client = new plaid.Client({
-  clientID: process.env.PLAID_CLIENT_ID,
-  secret: process.env.PLAID_SECRET,
-  env: plaid.environments.sandbox,
+// Ensure these are set in Railway
+const configuration = new Configuration({
+  basePath: PlaidEnvironments.sandbox,
+  baseOptions: {
+    headers: {
+      'PLAID-CLIENT-ID': process.env.PLAID_CLIENT_ID,
+      'PLAID-SECRET': process.env.PLAID_SECRET,
+      'Plaid-Version': '2020-09-14',
+    },
+  },
 });
+const plaid = new PlaidApi(configuration);
 
-// Create link token
-router.post('/api/plaid/create_link_token', async (req, res) => {
+// Example Mongo model; adapt to your schema
+// const Token = mongoose.model('Token', new Schema({ userId: String, accessToken: String, itemId: String }));
+
+// Your auth middleware should set req.user.id
+router.post('/create_link_token', async (req, res) => {
   try {
-    const response = await client.linkTokenCreate({
-      user: {
-        client_user_id: req.body.userId, // your authenticated user ID
-      },
+    const userId = req.user?.id || req.body.userId; 
+    const response = await plaid.linkTokenCreate({
+      user: { client_user_id: String(userId) },
       client_name: 'BudgetGator',
-      products: ['auth', 'transactions'],
+      products: ['transactions'], // adjust as needed
       country_codes: ['US'],
       language: 'en',
     });
-    res.json({ link_token: response.link_token });
+    res.json({ link_token: response.data.link_token });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to create link token' });
+    console.error(err?.response?.data || err);
+    res.status(500).json({ error: 'link_token_failed' });
   }
 });
 
-// Exchange public token for access token
-router.post('/api/plaid/exchange_public_token', async (req, res) => {
-  const { publicToken } = req.body;
-
+router.post('/exchange_public_token', async (req, res) => {
   try {
-    const response = await client.itemPublicTokenExchange({ public_token: publicToken });
-    const accessToken = response.access_token;
+    const userId = req.user?.id || req.body.userId;
+    const { public_token } = req.body;
+    const exchange = await plaid.itemPublicTokenExchange({ public_token });
+    const { access_token, item_id } = exchange.data;
 
-    // TODO: store accessToken in your database linked to the user
-    res.json({ accessToken });
+    // Persist securely; never send access_token to client
+    // await Token.findOneAndUpdate({ userId }, { accessToken: access_token, itemId: item_id }, { upsert: true });
+
+    res.json({ ok: true, item_id });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to exchange public token' });
+    console.error(err?.response?.data || err);
+    res.status(500).json({ error: 'exchange_failed' });
+  }
+});
+
+router.get('/accounts', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    // const doc = await Token.findOne({ userId });
+    // if (!doc) return res.status(404).json({ error: 'no_token' });
+
+    // const acc = await plaid.accountsGet({ access_token: doc.accessToken });
+    // res.json(acc.data.accounts);
+
+    res.json([]); // stub until you wire Mongo
+  } catch (err) {
+    console.error(err?.response?.data || err);
+    res.status(500).json({ error: 'accounts_failed' });
   }
 });
 
 module.exports = router;
+
