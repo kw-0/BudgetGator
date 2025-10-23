@@ -1,9 +1,10 @@
+import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Button, StyleSheet, Text, TextInput, View } from "react-native";
 
 export default function LoginScreen() {
-  const [username, setUsername] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const router = useRouter();
 
@@ -27,8 +28,8 @@ export default function LoginScreen() {
 
       <TextInput
         placeholder="Username/Email"
-        value={username}
-        onChangeText={setUsername}
+        value={identifier}
+        onChangeText={setIdentifier}
         style={styles.loginboxes}
       />
 
