@@ -17,6 +17,7 @@ mongoose.connect(process.env.MONGO_URI, {
 
 // Routes
 app.use("/api/auth", require("./routes/auth"));
+app.use("/api/plaid", require("./routes/plaid"));
 
 // Healthcheck
 app.get("/health", (req, res) => res.json({ status: "ok" }));
