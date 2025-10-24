@@ -142,47 +142,38 @@ router.post("/sandbox/cards-and-transactions", auth, async (req, res) => {
     const exchangeResponse = await plaidClient.itemPublicTokenExchange({ public_token });
     const access_token = exchangeResponse.data.access_token;
 
-    // 3. Fetch accounts (will include checking, savings, credit card)
+    // 3. Get accounts and filter for credit cards
     const accountsResponse = await plaidClient.accountsGet({ access_token });
-    const creditCards = accountsResponse.data.accounts.filter(
-      (acct) => acct.subtype === "credit card"
-    );
+    const creditCardIds = accountsResponse.data.accounts
+      .filter((acct) => acct.subtype === "credit card")
+      .map((acct) => acct.account_id);
 
-    // 4. Retry until transactions are ready
-    async function getTransactionsWithRetry(access_token, retries = 5) {
-      for (let i = 0; i < retries; i++) {
-        try {
-          const txResponse = await plaidClient.transactionsGet({
-            access_token,
-            start_date: "2023-01-01",
-            end_date: "2023-02-01",
-          });
-          return txResponse.data.transactions;
-        } catch (err) {
-          if (err.response?.data?.error_code === "PRODUCT_NOT_READY") {
-            console.log("Transactions not ready, retrying...");
-            await new Promise((r) => setTimeout(r, 3000));
-          } else {
-            throw err;
-          }
-        }
-      }
-      throw new Error("Transactions not ready after retries");
+    // 4. Sync transactions (no cursor = full history)
+    let cursor = null;
+    let added = [];
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await plaidClient.transactionsSync({ access_token, cursor });
+      const data = response.data;
+
+      added = added.concat(data.added);
+      cursor = data.next_cursor;
+      hasMore = data.has_more;
     }
 
-    const allTx = await getTransactionsWithRetry(access_token);
-    const creditCardIds = creditCards.map((c) => c.account_id);
-    const creditCardTx = allTx.filter((tx) => creditCardIds.includes(tx.account_id));
+    // 5. Filter for credit card transactions only
+    const creditCardTx = added.filter((tx) => creditCardIds.includes(tx.account_id));
 
     res.json({
-      message: "Sandbox credit card accounts + transactions",
-      creditCards,
+      message: "Synced sandbox credit card transactions",
       transactions: creditCardTx,
     });
   } catch (err) {
-    console.error("Sandbox cards error:", err.response?.data || err);
-    res.status(500).json({ error: "Failed to fetch sandbox credit cards" });
+    console.error("Sync error:", err.response?.data || err);
+    res.status(500).json({ error: "Failed to sync transactions" });
   }
 });
+
 
 module.exports = router;
