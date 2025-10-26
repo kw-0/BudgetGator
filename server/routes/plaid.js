@@ -175,5 +175,127 @@ router.post("/sandbox/cards-and-transactions", auth, async (req, res) => {
   }
 });
 
+// added from quickstart sandbox
+// probably need to have sandbox users implemented for these to work
+
+
+// Retrieve Transactions for an Item
+// https://plaid.com/docs/#transactions
+app.get('/api/transactions', function (request, response, next) {
+  Promise.resolve()
+    .then(async function () {
+      // Set cursor to empty to receive all historical updates
+      let cursor = null;
+
+      // New transaction updates since "cursor"
+      let added = [];
+      let modified = [];
+      // Removed transaction ids
+      let removed = [];
+      let hasMore = true;
+      // Iterate through each page of new transaction updates for item
+      while (hasMore) {
+        const request = {
+          access_token: ACCESS_TOKEN,
+          cursor: cursor,
+        };
+        const response = await client.transactionsSync(request)
+        const data = response.data;
+
+        // If no transactions are available yet, wait and poll the endpoint.
+        // Normally, we would listen for a webhook, but the Quickstart doesn't
+        // support webhooks. For a webhook example, see
+        // https://github.com/plaid/tutorial-resources or
+        // https://github.com/plaid/pattern
+        cursor = data.next_cursor;
+        if (cursor === "") {
+          await sleep(2000);
+          continue;
+        }
+
+        // Add this page of results
+        added = added.concat(data.added);
+        modified = modified.concat(data.modified);
+        removed = removed.concat(data.removed);
+        hasMore = data.has_more;
+
+        prettyPrintResponse(response);
+      }
+
+      const compareTxnsByDateAscending = (a, b) => (a.date > b.date) - (a.date < b.date);
+      // Return the 8 most recent transactions
+      const recently_added = [...added].sort(compareTxnsByDateAscending).slice(-8);
+      response.json({ latest_transactions: recently_added });
+    })
+    .catch(next);
+});
+
+
+// Retrieve real-time Balances for each of an Item's accounts
+// https://plaid.com/docs/#balance
+app.get('/api/balance', function (request, response, next) {
+  Promise.resolve()
+    .then(async function () {
+      const balanceResponse = await client.accountsBalanceGet({
+        access_token: ACCESS_TOKEN,
+      });
+      prettyPrintResponse(balanceResponse);
+      response.json(balanceResponse.data);
+    })
+    .catch(next);
+});
+
+app.get('/api/statements', function (request, response, next) {
+  Promise.resolve()
+    .then(async function () {
+      const statementsListResponse = await client.statementsList({ access_token: ACCESS_TOKEN });
+      prettyPrintResponse(statementsListResponse);
+      const pdfRequest = {
+        access_token: ACCESS_TOKEN,
+        statement_id: statementsListResponse.data.accounts[0].statements[0].statement_id
+      };
+
+      const statementsDownloadResponse = await client.statementsDownload(pdfRequest, {
+        responseType: 'arraybuffer',
+      });
+      prettyPrintResponse(statementsDownloadResponse);
+      response.json({
+        json: statementsListResponse.data,
+        pdf: statementsDownloadResponse.data.toString('base64'),
+      });
+    })
+    .catch(next);
+});
+
+
+// Retrieve information about an Item
+// https://plaid.com/docs/#retrieve-item
+app.get('/api/item', function (request, response, next) {
+  Promise.resolve()
+    .then(async function () {
+      // Pull the Item - this includes information about available products,
+      // billed products, webhook information, and more.
+      const itemResponse = await client.itemGet({
+        access_token: ACCESS_TOKEN,
+      });
+      // Also pull information about the institution
+      const configs = {
+        institution_id: itemResponse.data.item.institution_id,
+        country_codes: PLAID_COUNTRY_CODES,
+      };
+      const instResponse = await client.institutionsGetById(configs);
+      prettyPrintResponse(itemResponse);
+      response.json({
+        item: itemResponse.data.item,
+        institution: instResponse.data.institution,
+      });
+    })
+    .catch(next);
+});
+
+
+
+
+
 
 module.exports = router;
