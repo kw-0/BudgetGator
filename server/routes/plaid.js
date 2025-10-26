@@ -127,7 +127,7 @@ router.post("/sandbox/cards-and-transactions", auth, async (req, res) => {
 
 // Retrieve Transactions for an Item
 // https://plaid.com/docs/#transactions
-router.get('/api/transactions', function (request, response, next) {
+app.get('/api/transactions', function (request, response, next) {
   Promise.resolve()
     .then(async function () {
       // Set cursor to empty to receive all historical updates
@@ -179,7 +179,7 @@ router.get('/api/transactions', function (request, response, next) {
 
 // Retrieve real-time Balances for each of an Item's accounts
 // https://plaid.com/docs/#balance
-router.get('/api/balance', function (request, response, next) {
+app.get('/api/balance', function (request, response, next) {
   Promise.resolve()
     .then(async function () {
       const balanceResponse = await client.accountsBalanceGet({
@@ -191,7 +191,7 @@ router.get('/api/balance', function (request, response, next) {
     .catch(next);
 });
 
-router.get('/api/statements', function (request, response, next) {
+app.get('/api/statements', function (request, response, next) {
   Promise.resolve()
     .then(async function () {
       const statementsListResponse = await client.statementsList({ access_token: ACCESS_TOKEN });
@@ -216,7 +216,7 @@ router.get('/api/statements', function (request, response, next) {
 
 // Retrieve information about an Item
 // https://plaid.com/docs/#retrieve-item
-router.get('/api/item', function (request, response, next) {
+app.get('/api/item', function (request, response, next) {
   Promise.resolve()
     .then(async function () {
       // Pull the Item - this includes information about available products,
