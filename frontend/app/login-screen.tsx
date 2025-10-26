@@ -36,6 +36,8 @@ export default function LoginScreen() {
       console.log("Login successful:", data);
       Alert.alert("Success", "Login successful");
       await AsyncStorage.setItem("userId", data.user.id);
+      await AsyncStorage.setItem("token", data.token);
+
       
       // Navigate to dashboard
       router.push("./dashboard");
