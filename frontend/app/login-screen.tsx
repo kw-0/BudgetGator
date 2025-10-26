@@ -59,6 +59,8 @@ export default function LoginScreen() {
         value={identifier}
         onChangeText={setIdentifier}
         style={styles.loginboxes}
+        autoCapitalize="none"
+        placeholderTextColor="#999"
       />
 
       <TextInput
@@ -67,8 +69,12 @@ export default function LoginScreen() {
         value={password}
         onChangeText={setPassword}
         style={styles.loginboxes}
+        autoCapitalize="none"
+        placeholderTextColor="#999"
       />
 
+      <Button title="Create Account" onPress={() => router.push("./create-acct")} 
+/>
       <Button title="Login" onPress={handleLogin} />
     </View>
   );
