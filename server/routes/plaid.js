@@ -4,6 +4,8 @@ const auth = require("../middleware/auth");
 const { Configuration, PlaidApi, PlaidEnvironments } = require("plaid");
 const User = require("../models/User");
 
+
+
 // Configure Plaid client
 const config = new Configuration({
   basePath: PlaidEnvironments.sandbox, 
@@ -27,153 +29,169 @@ router.post("/create_link_token", auth, async (req, res) => {
       products: ["auth", "transactions"],
       country_codes: ["US"],
       language: "en",
-      redirect_uri: "https://budgetgator-production.up.railway.app/api/plaid/return",
+      redirect_uri: `${process.env.API_URL}/api/plaid/return`,
     });
+    await User.findByIdAndUpdate(userId, { plaidLinkToken: response.data.link_token });
 
     res.json({ link_token: response.data.link_token });
-    await User.findByIdAndUpdate(userId, { plaidLinkToken: response.data.link_token });
-    try {
-      const exchangeResponse = await plaidClient.itemPublicTokenExchange({ public_token: response.data.link_token });
-      const access_token = exchangeResponse.data.access_token;
-      const item_id = exchangeResponse.data.item_id;
 
-      await User.findByIdAndUpdate(userId, {
-        plaidAccessToken: access_token,
-        plaidItemId: item_id,
-      });
-
-      res.json({ message: "Plaid token exchanged and stored successfully" });
-    } catch (err) {
-      console.error("Plaid exchange error:", err.response?.data || err);
-      res.status(500).json({ error: "Failed to exchange public_token" });
-    }
   } catch (err) {
     console.error("Error creating link token:", err);
     res.status(500).json({ error: "Unable to create link token" });
   }
 });
 
-
 // // Exchange public_token for access_token
 // router.post("/exchange_public_token", auth, async (req, res) => {
-//   const { public_token } = req.body;
-//   const userId = req.user.id;
-
-//   if (!public_token) {
-//     return res.status(400).json({ error: "Missing public_token" });
-//   }
-
 //   try {
-//     const exchangeResponse = await plaidClient.itemPublicTokenExchange({ public_token });
-//     const access_token = exchangeResponse.data.access_token;
-//     const item_id = exchangeResponse.data.item_id;
+//     const { public_token } = req.body;
+//     if (!public_token) return res.status(400).json({ error: "Missing public_token" });
 
-//     await User.findByIdAndUpdate(userId, {
-//       plaidAccessToken: access_token,
-//       plaidItemId: item_id,
+//     const exchangeResp = await plaidClient.itemPublicTokenExchange({ public_token });
+//     const accessToken = exchangeResp.data.access_token;
+
+//     await User.findByIdAndUpdate(req.user.id, {
+//       plaidAccessToken: accessToken,
+//       plaidLinkToken: null,
 //     });
 
-//     res.json({ message: "Plaid token exchanged and stored successfully" });
+//     res.json({ success: true });
 //   } catch (err) {
-//     console.error("Plaid exchange error:", err.response?.data || err);
-//     res.status(500).json({ error: "Failed to exchange public_token" });
+//     console.error("Error exchanging public token:", err);
+//     res.status(500).json({ error: "Failed to exchange public token" });
 //   }
 // });
 
 router.get("/return", async (req, res) => {
-  const publicTokenResponse = await plaidClient.sandboxPublicTokenCreate({
-      institution_id: "ins_109508", // First Platypus Bank (sandbox)
-      initial_products: ["transactions"],
-  });
-  const public_token = publicTokenResponse.data.public_token;
   try {
-    const exchangeResponse = await plaidClient.itemPublicTokenExchange({ public_token });
-    const access_token = exchangeResponse.data.access_token;
-    const item_id = exchangeResponse.data.item_id;
+    const link_token = req.query.link_token;
+    if (!link_token) {
+      return res.status(400).send("Missing link_token");
+    }
+    const user = await User.findOne({ plaidLinkToken: link_token });
+    if (!user) return res.status(400).send("User not found");
 
-    await User.findByIdAndUpdate(userId, {
-      plaidAccessToken: access_token,
-      plaidItemId: item_id,
+    // Create a sandbox item and get a public token
+    const sandboxResp = await plaidClient.sandboxPublicTokenCreate({
+      institution_id: "ins_109508",
+      initial_products: ["transactions"],
     });
 
-    res.json({ message: "Plaid token exchanged and stored successfully" });
-  } catch (err) {
-    console.error("Plaid exchange error:", err.response?.data || err);
-    res.status(500).json({ error: "Failed to exchange public_token" });
-  }
+    const publicToken = sandboxResp.data.public_token;
 
+    const exchangeResp = await plaidClient.itemPublicTokenExchange({
+      public_token: publicToken,
+    });
 
-  try {
-    // Look up the user who owns this link_token
-    // const user = await User.findOne({ plaidLinkToken: link_token });
-    // if (!user) {
-    //   return res.status(404).send("No user found for this link_token");
-    // }
+    const accessToken = exchangeResp.data.access_token;
 
-    // // Optional: clear the link_token so it can't be reused
-    // await User.findByIdAndUpdate(user._id, { $unset: { plaidLinkToken: "" } });
+    await User.findByIdAndUpdate(user._id, {
+      plaidAccessToken: accessToken,
+      plaidLinkToken: null,
+    });
 
-    // Show static success page
-    res.send(`
+     return res.send(`
       <html>
-        <body style="font-family: sans-serif; text-align: center; margin-top: 50px;">
-          <h2>Bank account linked successfully 🎉</h2>
-          <p>You can now close this window and return to the BudgetGator app.</p>
+        <body>
+          <script>
+            try {
+              const payload = { public_token: '${publicToken}' };
+              if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+                window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+              } else {
+                // fallback: navigate to a simple success page
+                document.body.innerHTML = '<h2>Bank Linked Successfully</h2><p>You can return to the app.</p>';
+              }
+            } catch (e) {
+              document.body.innerHTML = '<h2>Error posting public token</h2>';
+            }
+          </script>
+          <noscript>
+            <h2>Bank Linked</h2>
+          </noscript>
         </body>
       </html>
     `);
   } catch (err) {
-    console.error("Error handling Plaid return:", err.response?.data || err);
-    res.status(500).send("Error completing Plaid link");
+    console.error("Plaid return error:", err);
+    res.status(500).send("Something went wrong linking your bank");
   }
 });
-// Sandbox-only: simulate multiple credit cards + transactions
-router.post("/sandbox/cards-and-transactions", auth, async (req, res) => {
+
+router.get("/transactions", auth, async (req, res) => {
   try {
-    // 1. Create a sandbox Item with transactions
-    const publicTokenResponse = await plaidClient.sandboxPublicTokenCreate({
-      institution_id: "ins_109508", // First Platypus Bank
-      initial_products: ["transactions"],
-    });
+    const user = await User.findById(req.user.id);
+    const accessToken = user.plaidAccessToken;
 
-    const public_token = publicTokenResponse.data.public_token;
-
-    // 2. Exchange for access_token
-    const exchangeResponse = await plaidClient.itemPublicTokenExchange({ public_token });
-    const access_token = exchangeResponse.data.access_token;
-
-    // 3. Get accounts and filter for credit cards
-    const accountsResponse = await plaidClient.accountsGet({ access_token });
-    const creditCardIds = accountsResponse.data.accounts
-      .filter((acct) => acct.subtype === "credit card")
-      .map((acct) => acct.account_id);
-
-    // 4. Sync transactions (no cursor = full history)
-    let cursor = null;
-    let added = [];
-    let hasMore = true;
-
-    while (hasMore) {
-      const response = await plaidClient.transactionsSync({ access_token, cursor });
-      const data = response.data;
-
-      added = added.concat(data.added);
-      cursor = data.next_cursor;
-      hasMore = data.has_more;
+    if (!accessToken) {
+      return res.status(400).json({ message: "No bank linked" });
     }
 
-    // 5. Filter for credit card transactions only
-    const creditCardTx = added.filter((tx) => creditCardIds.includes(tx.account_id));
+    const now = new Date().toISOString().slice(0, 10);
+    const thirtyAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
 
-    res.json({
-      message: "Synced sandbox credit card transactions",
-      transactions: creditCardTx,
+    const response = await plaidClient.transactionsGet({
+      access_token: accessToken,
+      start_date: thirtyAgo,
+      end_date: now,
     });
+
+    res.json(response.data.transactions);
   } catch (err) {
-    console.error("Sync error:", err.response?.data || err);
-    res.status(500).json({ error: "Failed to sync transactions" });
+    console.error("Error fetching transactions:", err);
+    res.status(500).json({ error: "Failed to fetch transactions" });
   }
 });
+
+// // Sandbox-only: simulate multiple credit cards + transactions
+// router.post("/sandbox/cards-and-transactions", auth, async (req, res) => {
+//   try {
+//     // 1. Create a sandbox Item with transactions
+//     const publicTokenResponse = await plaidClient.sandboxPublicTokenCreate({
+//       institution_id: "ins_109508", // First Platypus Bank
+//       initial_products: ["transactions"],
+//     });
+
+//     const public_token = publicTokenResponse.data.public_token;
+
+//     // 2. Exchange for access_token
+//     const exchangeResponse = await plaidClient.itemPublicTokenExchange({ public_token });
+//     const access_token = exchangeResponse.data.access_token;
+
+//     // 3. Get accounts and filter for credit cards
+//     const accountsResponse = await plaidClient.accountsGet({ access_token });
+//     const creditCardIds = accountsResponse.data.accounts
+//       .filter((acct) => acct.subtype === "credit card")
+//       .map((acct) => acct.account_id);
+
+//     // 4. Sync transactions (no cursor = full history)
+//     let cursor = null;
+//     let added = [];
+//     let hasMore = true;
+
+//     while (hasMore) {
+//       const response = await plaidClient.transactionsSync({ access_token, cursor });
+//       const data = response.data;
+
+//       added = added.concat(data.added);
+//       cursor = data.next_cursor;
+//       hasMore = data.has_more;
+//     }
+
+//     // 5. Filter for credit card transactions only
+//     const creditCardTx = added.filter((tx) => creditCardIds.includes(tx.account_id));
+
+//     res.json({
+//       message: "Synced sandbox credit card transactions",
+//       transactions: creditCardTx,
+//     });
+//   } catch (err) {
+//     console.error("Sync error:", err.response?.data || err);
+//     res.status(500).json({ error: "Failed to sync transactions" });
+//   }
+// });
 
 // added from quickstart sandbox
 // probably need to have sandbox users implemented for these to work
