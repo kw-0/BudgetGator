@@ -34,6 +34,20 @@ router.post("/create_link_token", auth, async (req, res) => {
     await User.findByIdAndUpdate(userId, { plaidLinkToken: response.data.link_token });
 
     res.json({ link_token: response.data.link_token });
+    const sandboxResp = await plaidClient.sandboxPublicTokenCreate({
+      institution_id: "ins_109508",
+      initial_products: ["transactions"],
+    });
+
+    const publicToken = sandboxResp.data.public_token;
+    const exchangeResp = await plaidClient.itemPublicTokenExchange({
+      public_token: publicToken,
+    });
+    const accessToken = exchangeResp.data.access_token;
+    await User.findByIdAndUpdate(userId, {
+      plaidAccessToken: accessToken,
+      plaidLinkToken: null,
+    });
 
   } catch (err) {
     console.error("Error creating link token:", err);
@@ -64,32 +78,7 @@ router.post("/create_link_token", auth, async (req, res) => {
 
 router.get("/return", async (req, res) => {
   try {
-    const link_token = req.query.link_token;
-    if (!link_token) {
-      return res.status(400).send("Missing link_token");
-    }
-    const user = await User.findOne({ plaidLinkToken: link_token });
-    if (!user) return res.status(400).send("User not found");
-
-    // Create a sandbox item and get a public token
-    const sandboxResp = await plaidClient.sandboxPublicTokenCreate({
-      institution_id: "ins_109508",
-      initial_products: ["transactions"],
-    });
-
-    const publicToken = sandboxResp.data.public_token;
-
-    const exchangeResp = await plaidClient.itemPublicTokenExchange({
-      public_token: publicToken,
-    });
-
-    const accessToken = exchangeResp.data.access_token;
-
-    await User.findByIdAndUpdate(user._id, {
-      plaidAccessToken: accessToken,
-      plaidLinkToken: null,
-    });
-
+    
      return res.send(`
       <html>
         <body>
