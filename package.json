@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "@react-native-community/datetimepicker": "8.4.4",
+    "expo": "^54.0.21",
+    "react-native-modal-datetime-picker": "^18.0.0"
+  }
+}
