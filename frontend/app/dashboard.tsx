@@ -23,12 +23,17 @@ export default function Dashboard() {
   const [linkToken, setLinkToken] = useState(null);
   const [loading, setLoading] = useState(false);
   const [transactions, setTransactions] = useState([]);
-  const [startDate, setStartDate] = useState(new Date());
-  const [endDate, setEndDate] = useState(new Date());
   const [showPicker, setShowPicker] = useState(false);
   const [pickerType, setPickerType] = useState("start");
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  const [startDate, setStartDate] = useState(new Date());
+  const [endDate, setEndDate] = useState(new Date());
+  const [dateFilterVisible, setDateFilterVisible] = useState(false);
+  const [filterStartDate, setFilterStartDate] = useState(null);
+  const [filterEndDate, setFilterEndDate] = useState(null);
 
   async function startPlaidLink() {
     try {
@@ -74,9 +79,11 @@ export default function Dashboard() {
     const amount =
       typeof raw.amount === "number" ? raw.amount : Number(raw.amount) || 0;
     const date = raw.date || raw.transaction_date || raw.created_at || null;
-    const category = Array.isArray(raw.category)
-      ? raw.category.join(", ")
-      : raw.category || "Uncategorized";
+    const category =
+      raw.personal_finance_category?.primary ||
+      (Array.isArray(raw.category) ? raw.category.join(", ") : raw.category) ||
+      "Uncategorized";
+
     return {
       id: raw.transaction_id || raw.id || Math.random().toString(),
       name,
@@ -99,6 +106,14 @@ export default function Dashboard() {
     return d.toLocaleDateString();
   }
 
+  function formatDisplayText(text) {
+    if (!text) return "";
+    return text
+      .replace(/_/g, " ")
+      .toLowerCase()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
   async function fetchTransactions() {
     try {
       setLoading(true);
@@ -113,22 +128,14 @@ export default function Dashboard() {
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         console.log("Fetch failed:", errorData);
-        Alert.alert(
-          "Error",
-          errorData.message || "Failed to fetch transactions"
-        );
+        Alert.alert("Error", errorData.message || "Failed to fetch transactions");
         return;
       }
 
       const data = await res.json();
-      console.log("Plaid transactions raw JSON:", JSON.stringify(data, null, 2));
-
       const rawList = Array.isArray(data) ? data : data.transactions || [];
       if (rawList.length === 0) {
-        Alert.alert(
-          "No Transactions",
-          "Bank linked but no recent activity found."
-        );
+        Alert.alert("No Transactions", "Bank linked but no recent activity found.");
         setTransactions([]);
         return;
       }
@@ -143,28 +150,34 @@ export default function Dashboard() {
     }
   }
 
-  const spendingByCategory = useMemo(() => {
-    const summary = {};
-    transactions.forEach((tx) => {
-      const cat = tx.category || "Uncategorized";
-      if (tx.amount < 0) {
-        summary[cat] = (summary[cat] || 0) + Math.abs(tx.amount);
-      }
-    });
-    return Object.entries(summary).sort((a, b) => b[1] - a[1]);
+  const allCategories = useMemo(() => {
+    const set = new Set(transactions.map((tx) => tx.category || "Uncategorized"));
+    return ["All", ...Array.from(set)];
   }, [transactions]);
+
+  const filteredTransactions = useMemo(() => {
+    let list = transactions;
+    if (selectedCategory !== "All") {
+      list = list.filter((tx) => tx.category === selectedCategory);
+    }
+    if (filterStartDate && filterEndDate) {
+      list = list.filter((tx) => {
+        const txDate = new Date(tx.date);
+        return txDate >= filterStartDate && txDate <= filterEndDate;
+      });
+    }
+    return list;
+  }, [transactions, selectedCategory, filterStartDate, filterEndDate]);
 
   function renderItem({ item }) {
     return (
       <View style={styles.row}>
         <View style={styles.left}>
-          <Text style={styles.name}>{item.name}</Text>
+          <Text style={styles.name}>{formatDisplayText(item.name)}</Text>
           {item.category ? (
-            <Text style={styles.category}>{item.category}</Text>
+            <Text style={styles.category}>{formatDisplayText(item.category)}</Text>
           ) : null}
-          {item.date ? (
-            <Text style={styles.date}>{formatDate(item.date)}</Text>
-          ) : null}
+          {item.date ? <Text style={styles.date}>{formatDate(item.date)}</Text> : null}
         </View>
         <View style={styles.right}>
           <Text
@@ -176,27 +189,20 @@ export default function Dashboard() {
             {formatCurrency(item.amount)}
           </Text>
         </View>
-        <View
+        <TouchableOpacity
           style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0 }}
-        >
-          <Button
-            title=""
-            onPress={() => {
-              setSelectedTransaction(item);
-              setDetailsVisible(true);
-            }}
-          />
-        </View>
+          onPress={() => {
+            setSelectedTransaction(item);
+            setDetailsVisible(true);
+          }}
+        />
       </View>
     );
   }
 
   if (showPlaid) {
     return (
-      <WebView
-        source={{ uri: linkToken }}
-        onNavigationStateChange={handleNavigation}
-      />
+      <WebView source={{ uri: linkToken }} onNavigationStateChange={handleNavigation} />
     );
   }
 
@@ -210,103 +216,191 @@ export default function Dashboard() {
             <Button title="Link Bank Account" onPress={startPlaidLink} />
             <View style={{ height: 12 }} />
             <Button title="Get Transactions" onPress={fetchTransactions} />
-            <View style={{ height: 12 }} />
-            <Button
-              title={`From: ${startDate.toLocaleDateString()}`}
-              onPress={() => {
-                setPickerType("start");
-                setShowPicker(true);
-              }}
-            />
-            <View style={{ height: 8 }} />
-            <Button
-              title={`To: ${endDate.toLocaleDateString()}`}
-              onPress={() => {
-                setPickerType("end");
-                setShowPicker(true);
-              }}
-            />
 
-            <DateTimePickerModal
-              isVisible={showPicker}
-              mode="date"
-              date={pickerType === "start" ? startDate : endDate}
-              minimumDate={pickerType === "end" ? startDate : undefined}
-              onConfirm={(date) => {
-                setShowPicker(false);
-                if (pickerType === "start") {
-                  setStartDate(date);
-                  if (endDate < date) setEndDate(date);
-                } else {
-                  setEndDate(date);
-                }
-              }}
-              onCancel={() => setShowPicker(false)}
-            />
+            {/* Category Filter */}
+            {transactions.length > 0 && (
+              <View style={{ marginVertical: 12 }}>
+                <Text style={{ fontWeight: "bold", marginBottom: 4 }}>Filter by Category:</Text>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: "#007AFF",
+                    padding: 12,
+                    borderRadius: 8,
+                    alignItems: "center",
+                  }}
+                  onPress={() => setCategoryModalVisible(true)}
+                >
+                  <Text style={{ color: "white", fontWeight: "bold" }}>
+                    {selectedCategory === "All" ? "All Categories" : formatDisplayText(selectedCategory)}
+                  </Text>
+                </TouchableOpacity>
+
+                <Modal
+                  visible={categoryModalVisible}
+                  transparent
+                  animationType="slide"
+                  onRequestClose={() => setCategoryModalVisible(false)}
+                >
+                  <View style={{ flex: 1, justifyContent: "center", backgroundColor: "rgba(0,0,0,0.5)", padding: 20 }}>
+                    <View style={{ backgroundColor: "white", borderRadius: 10, padding: 20, maxHeight: "80%" }}>
+                      <Text style={{ fontSize: 16, fontWeight: "bold", marginBottom: 10 }}>Select a Category</Text>
+                      <ScrollView>
+                        {allCategories.map((cat) => (
+                          <TouchableOpacity
+                            key={cat}
+                            style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#eee" }}
+                            onPress={() => {
+                              setSelectedCategory(cat);
+                              setCategoryModalVisible(false);
+                            }}
+                          >
+                            <Text style={{ color: "black", fontSize: 14 }}>
+                              {cat === "All" ? "All" : formatDisplayText(cat)}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                      <TouchableOpacity
+                        style={{ marginTop: 10, backgroundColor: "gray", padding: 10, borderRadius: 8, alignItems: "center" }}
+                        onPress={() => setCategoryModalVisible(false)}
+                      >
+                        <Text style={{ color: "white" }}>Cancel</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </Modal>
+              </View>
+            )}
+
+            {/* Date Filter Button */}
+            {transactions.length > 0 && (
+              <View style={{ marginVertical: 12 }}>
+                <Text style={{ fontWeight: "bold", marginBottom: 4 }}>Filter by Date:</Text>
+                <TouchableOpacity
+                  style={{ backgroundColor: "#007AFF", padding: 12, borderRadius: 8, alignItems: "center" }}
+                  onPress={() => setDateFilterVisible(true)}
+                >
+                  <Text style={{ color: "white", fontWeight: "bold" }}>
+                    {filterStartDate && filterEndDate
+                      ? `${filterStartDate.toLocaleDateString()} - ${filterEndDate.toLocaleDateString()}`
+                      : "Filter by Date"}
+                  </Text>
+                </TouchableOpacity>
+
+                <Modal
+                  visible={dateFilterVisible}
+                  transparent
+                  animationType="slide"
+                  onRequestClose={() => {
+                    setDateFilterVisible(false);
+                    setShowPicker(false);
+                  }}
+                >
+                  <View style={{ flex: 1, justifyContent: "center", backgroundColor: "rgba(0,0,0,0.5)", padding: 20 }}>
+                    <View style={{ backgroundColor: "white", borderRadius: 10, padding: 20, maxHeight: "80%" }}>
+                      <Text style={{ fontSize: 16, fontWeight: "bold", marginBottom: 10 }}>Select Date Range</Text>
+                      <Button
+                        title={`From: ${filterStartDate ? filterStartDate.toLocaleDateString() : "Not set"}`}
+                        onPress={() => {
+                          setPickerType("filterStart");
+                          setShowPicker(true);
+                        }}
+                      />
+                      <View style={{ height: 8 }} />
+                      <Button
+                        title={`To: ${filterEndDate ? filterEndDate.toLocaleDateString() : "Not set"}`}
+                        onPress={() => {
+                          setPickerType("filterEnd");
+                          setShowPicker(true);
+                        }}
+                      />
+                      <View style={{ height: 12 }} />
+                      <Button
+                        title="Clear Date Filter"
+                        onPress={() => {
+                          setFilterStartDate(null);
+                          setFilterEndDate(null);
+                          setDateFilterVisible(false);
+                        }}
+                      />
+                      <View style={{ height: 8 }} />
+                      <Button
+                        title="Close"
+                        onPress={() => {
+                          setDateFilterVisible(false);
+                          setShowPicker(false);
+                        }}
+                        color="gray"
+                      />
+
+                      <DateTimePickerModal
+                        isVisible={showPicker}
+                        mode="date"
+                        date={pickerType === "filterStart" ? filterStartDate || new Date() : filterEndDate || filterStartDate || new Date()}
+                        onConfirm={(date) => {
+                          setShowPicker(false);
+                          if (pickerType === "filterStart") {
+                            setFilterStartDate(date);
+                            if (!filterEndDate || filterEndDate < date) setFilterEndDate(date);
+                          } else {
+                            setFilterEndDate(date);
+                          }
+                        }}
+                        onCancel={() => setShowPicker(false)}
+                      />
+                    </View>
+                  </View>
+                </Modal>
+              </View>
+            )}
           </View>
         )}
       </View>
 
-      {spendingByCategory.length > 0 && (
-        <View style={styles.summary}>
-          <Text style={styles.summaryTitle}>Spending by Category</Text>
-          {spendingByCategory.map(([cat, total]) => (
-            <Text key={cat} style={styles.summaryItem}>
-              {cat}: ${total.toFixed(2)}
-            </Text>
-          ))}
-        </View>
-      )}
-
+      {/* Transactions List */}
       <View style={{ flex: 1 }}>
         {transactions.length === 0 && !loading ? (
           <View style={styles.empty}>
             <Text style={styles.emptyText}>No transactions to show</Text>
           </View>
         ) : (
-          <View style={{ flex: 1 }}>
-            <FlatList
-              data={transactions}
-              keyExtractor={(item) => item.id}
-              renderItem={renderItem}
-              ItemSeparatorComponent={() => <View style={styles.separator} />}
-              contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
-            />
-
-            <Modal
-              visible={detailsVisible}
-              transparent={true}
-              animationType="slide"
-              onRequestClose={() => setDetailsVisible(false)}
-            >
-              <View style={styles.modalOverlay}>
-                <View style={styles.modalContent}>
-                  <ScrollView>
-                    {selectedTransaction && (
-                      <>
-                        <Text style={styles.modalTitle}>
-                          {selectedTransaction.name}
-                        </Text>
-                        <Text>
-                          Amount: {formatCurrency(selectedTransaction.amount)}
-                        </Text>
-                        <Text>Category: {selectedTransaction.category}</Text>
-                        <Text>Date: {formatDate(selectedTransaction.date)}</Text>
-                        <Text>Transaction ID: {selectedTransaction.id}</Text>
-                      </>
-                    )}
-                  </ScrollView>
-                  <TouchableOpacity
-                    style={styles.closeButton}
-                    onPress={() => setDetailsVisible(false)}
-                  >
-                    <Text style={{ color: "white" }}>Close</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </Modal>
-          </View>
+          <FlatList
+            data={filteredTransactions}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+          />
         )}
+
+        {/* Transaction Details Modal */}
+        <Modal
+          visible={detailsVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setDetailsVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <ScrollView>
+                {selectedTransaction && (
+                  <>
+                    <Text style={styles.modalTitle}>
+                      {formatDisplayText(selectedTransaction.name)}
+                    </Text>
+                    <Text>Amount: {formatCurrency(selectedTransaction.amount)}</Text>
+                    <Text>Category: {selectedTransaction.category}</Text>
+                    <Text>Date: {formatDate(selectedTransaction.date)}</Text>
+                    <Text>Transaction ID: {selectedTransaction.id}</Text>
+                  </>
+                )}
+              </ScrollView>
+              <TouchableOpacity style={styles.closeButton} onPress={() => setDetailsVisible(false)}>
+                <Text style={{ color: "white" }}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </View>
     </View>
   );
@@ -325,9 +419,6 @@ const styles = StyleSheet.create({
   separator: { height: 1, backgroundColor: "#ccc" },
   empty: { flex: 1, justifyContent: "center", alignItems: "center" },
   emptyText: { color: "#999" },
-  summary: { padding: 16, backgroundColor: "#f5f5f5" },
-  summaryTitle: { fontSize: 16, fontWeight: "bold", marginBottom: 8 },
-  summaryItem: { fontSize: 14, marginBottom: 4 },
   modalOverlay: { flex: 1, justifyContent: "center", backgroundColor: "#000000aa" },
   modalContent: { backgroundColor: "white", margin: 20, borderRadius: 10, padding: 20 },
   modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 12 },
