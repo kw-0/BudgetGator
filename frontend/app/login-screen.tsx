@@ -3,7 +3,6 @@ import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Alert, Button, StyleSheet, Text, TextInput, View } from "react-native";
-import Dash from "./tabs/dash";
 
 const BASE_URL = Constants.expoConfig.extra.API_URL;
 export default function LoginScreen() {
@@ -81,7 +80,8 @@ export default function LoginScreen() {
       <Button title="Create Account" onPress={() => router.push("./create-acct")} 
 />
       <Button title="Login" onPress={handleLogin} />
-      <Button title="bottombar" onPress={Dash} />
+      <Button title="Bottom Bar" onPress={() => router.push("/tabs/dash")} />
+
     </View>
   );
 }
