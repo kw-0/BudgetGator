@@ -31,23 +31,20 @@ router.post("/create_link_token", auth, async (req, res) => {
       language: "en",
       redirect_uri: `${process.env.API_URL}/api/plaid/return`,
     });
-    await User.findByIdAndUpdate(userId, { plaidLinkToken: response.data.link_token });
-
+    // Return the link token to the client. (We don't persist link tokens in this schema.)
     res.json({ link_token: response.data.link_token });
+
+    // Sandbox helper: create a public token and exchange it so the developer can simulate a linked item.
     const sandboxResp = await plaidClient.sandboxPublicTokenCreate({
       institution_id: "ins_109508",
       initial_products: ["transactions"],
     });
-
     const publicToken = sandboxResp.data.public_token;
-    const exchangeResp = await plaidClient.itemPublicTokenExchange({
-      public_token: publicToken,
-    });
+    const exchangeResp = await plaidClient.itemPublicTokenExchange({ public_token: publicToken });
     const accessToken = exchangeResp.data.access_token;
-    await User.findByIdAndUpdate(userId, {
-      plaidAccessToken: accessToken,
-      plaidLinkToken: null,
-    });
+
+    // Store the new access token in the user's access-token array
+    await User.findByIdAndUpdate(userId, { $push: { plaidAccessTokens: accessToken } });
 
   } catch (err) {
     console.error("Error creating link token:", err);
@@ -56,51 +53,53 @@ router.post("/create_link_token", auth, async (req, res) => {
 });
 
 // // Exchange public_token for access_token
-// router.post("/exchange_public_token", auth, async (req, res) => {
-//   try {
-//     const { public_token } = req.body;
-//     if (!public_token) return res.status(400).json({ error: "Missing public_token" });
+router.post('/exchange_public_token', auth, async (req, res) => {
+  try {
+    const { public_token } = req.body;
+    if (!public_token) return res.status(400).json({ error: 'Missing public_token' });
 
-//     const exchangeResp = await plaidClient.itemPublicTokenExchange({ public_token });
-//     const accessToken = exchangeResp.data.access_token;
+    const exchangeResp = await plaidClient.itemPublicTokenExchange({ public_token });
+    const accessToken = exchangeResp.data.access_token;
 
-//     await User.findByIdAndUpdate(req.user.id, {
-//       plaidAccessToken: accessToken,
-//       plaidLinkToken: null,
-//     });
+    // Push into access token array (no legacy single-field updates)
+    await User.findByIdAndUpdate(req.user.id, { $push: { plaidAccessTokens: accessToken } });
 
-//     res.json({ success: true });
-//   } catch (err) {
-//     console.error("Error exchanging public token:", err);
-//     res.status(500).json({ error: "Failed to exchange public token" });
-//   }
-// });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error exchanging public token:', err.response?.data || err);
+    if (err.response && err.response.data) return res.status(400).json({ error: err.response.data });
+    res.status(500).json({ error: 'Failed to exchange public token' });
+  }
+});
 
 router.get("/return", async (req, res) => {
   try {
-    
-     return res.send(`
-      <html>
-        <body>
-          <script>
-            try {
-              const payload = { public_token: '${publicToken}' };
-              if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-                window.ReactNativeWebView.postMessage(JSON.stringify(payload));
-              } else {
-                // fallback: navigate to a simple success page
-                document.body.innerHTML = '<h2>Bank Linked Successfully</h2><p>You can return to the app.</p>';
-              }
-            } catch (e) {
-              document.body.innerHTML = '<h2>Error posting public token</h2>';
-            }
-          </script>
-          <noscript>
-            <h2>Bank Linked</h2>
-          </noscript>
-        </body>
-      </html>
-    `);
+    // Plaid will include public_token in the query when redirecting back. Read safely from query/body.
+    const publicToken = (req.query && (req.query.public_token || req.query.publicToken)) || (req.body && (req.body.public_token || req.body.publicToken)) || '';
+
+    // Keep the original HTML return behavior but embed the token safely.
+    const safeToken = String(publicToken).replace(/'/g, "\\'");
+    return res.send(`
+     <html>
+       <body>
+         <script>
+           try {
+             const payload = { public_token: '${safeToken}' };
+             if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+               window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+             } else {
+               document.body.innerHTML = '<h2>Bank Linked Successfully</h2><p>You can return to the app.</p>';
+             }
+           } catch (e) {
+             document.body.innerHTML = '<h2>Error posting public token</h2>';
+           }
+         </script>
+         <noscript>
+           <h2>Bank Linked</h2>
+         </noscript>
+       </body>
+     </html>
+   `);
   } catch (err) {
     console.error("Plaid return error:", err);
     res.status(500).send("Something went wrong linking your bank");
@@ -110,24 +109,31 @@ router.get("/return", async (req, res) => {
 router.get("/transactions", auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    const accessToken = user.plaidAccessToken;
-
-    if (!accessToken) {
-      return res.status(400).json({ message: "No bank linked" });
-    }
 
     const now = new Date().toISOString().slice(0, 10);
     const thirtyAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
       .toISOString()
       .slice(0, 10);
 
-    const response = await plaidClient.transactionsGet({
-      access_token: accessToken,
-      start_date: thirtyAgo,
-      end_date: now,
-    });
+    // Use all stored access tokens for this user (aggregate across items)
+    const tokens = Array.isArray(user.plaidAccessTokens) && user.plaidAccessTokens.length ? user.plaidAccessTokens : [];
+    if (!tokens || tokens.length === 0) return res.status(400).json({ message: 'No bank linked' });
 
-    res.json(response.data.transactions);
+    let allTransactions = [];
+    for (const token of tokens) {
+      try {
+        const resp = await plaidClient.transactionsGet({ access_token: token, start_date: thirtyAgo, end_date: now });
+        const txns = resp.data.transactions || [];
+        allTransactions = allTransactions.concat(txns);
+      } catch (e) {
+        console.error('Error fetching transactions for one token:', e.response?.data || e.message || e);
+        // continue with other tokens
+      }
+    }
+
+    // Sort by date descending
+    allTransactions.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    res.json(allTransactions);
   } catch (err) {
     console.error("Error fetching transactions:", err);
     res.status(500).json({ error: "Failed to fetch transactions" });

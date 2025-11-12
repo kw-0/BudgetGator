@@ -5,9 +5,9 @@ const UserSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
 
-  plaidAccessToken: { type: String, default: null },
-  plaidItemId: { type: String, default: null },
-  plaidLinkToken:  { type: String, default: null },
+  //plaidItemId: { type: String, default: null },
+  plaidAccessTokens: { type: [String], default: [] },
+
 
 });
 
