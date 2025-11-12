@@ -45,6 +45,7 @@ router.post("/create_link_token", auth, async (req, res) => {
 
     // Store the new access token in the user's access-token array
     await User.findByIdAndUpdate(userId, { $push: { plaidAccessTokens: accessToken } });
+    await User.findByIdAndUpdate(userId, { $push: { plaidItemIds: sandboxResp.data.item_id } });
 
   } catch (err) {
     console.error("Error creating link token:", err);
