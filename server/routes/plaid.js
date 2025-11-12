@@ -109,11 +109,35 @@ router.get("/return", async (req, res) => {
 router.get("/transactions", auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
+    // Determine date range: support ?period=YYYY-MM or explicit start_date & end_date
+    let start_date = req.query.start_date;
+    let end_date = req.query.end_date;
+    const period = req.query.period; // format: YYYY-MM
 
-    const now = new Date().toISOString().slice(0, 10);
-    const thirtyAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10);
+    if (period && !start_date && !end_date) {
+      const parts = String(period).split('-');
+      if (parts.length === 2) {
+        const year = parseInt(parts[0], 10);
+        const monthIndex = parseInt(parts[1], 10) - 1; // 0-based
+        if (!Number.isNaN(year) && monthIndex >= 0 && monthIndex <= 11) {
+          const start = new Date(year, monthIndex, 1);
+          const end = new Date(year, monthIndex + 1, 0); // last day of month
+          start_date = start.toISOString().slice(0, 10);
+          end_date = end.toISOString().slice(0, 10);
+        }
+      }
+    }
+
+    // Default to last 30 days if no range provided
+    if (!start_date || !end_date) {
+      const now = new Date();
+      const thirtyAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      start_date = start_date || thirtyAgo.toISOString().slice(0, 10);
+      end_date = end_date || now.toISOString().slice(0, 10);
+    }
+
+    // Optional category filter
+    const categoryFilter = req.query.category ? String(req.query.category).toLowerCase() : null;
 
     // Use all stored access tokens for this user (aggregate across items)
     const tokens = Array.isArray(user.plaidAccessTokens) && user.plaidAccessTokens.length ? user.plaidAccessTokens : [];
@@ -122,7 +146,7 @@ router.get("/transactions", auth, async (req, res) => {
     let allTransactions = [];
     for (const token of tokens) {
       try {
-        const resp = await plaidClient.transactionsGet({ access_token: token, start_date: thirtyAgo, end_date: now });
+        const resp = await plaidClient.transactionsGet({ access_token: token, start_date, end_date });
         const txns = resp.data.transactions || [];
         allTransactions = allTransactions.concat(txns);
       } catch (e) {
@@ -131,9 +155,30 @@ router.get("/transactions", auth, async (req, res) => {
       }
     }
 
+    // Normalize and filter transactions by category if requested
+    const filtered = allTransactions.filter((tx) => {
+      if (!categoryFilter) return true;
+      const cat = (tx.personal_finance_category && tx.personal_finance_category.primary) ||
+        (Array.isArray(tx.category) ? tx.category.join(', ') : tx.category) || '';
+      return String(cat).toLowerCase().includes(categoryFilter);
+    });
+
     // Sort by date descending
-    allTransactions.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-    res.json(allTransactions);
+    filtered.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+
+    // Compute basic totals and totals by category
+    const totals = { count: filtered.length, total_amount: 0, by_category: {} };
+    for (const tx of filtered) {
+      const amt = typeof tx.amount === 'number' ? tx.amount : Number(tx.amount) || 0;
+      totals.total_amount += amt;
+      const cat = (tx.personal_finance_category && tx.personal_finance_category.primary) ||
+        (Array.isArray(tx.category) ? tx.category.join(', ') : tx.category) || 'Uncategorized';
+      const key = String(cat);
+      totals.by_category[key] = (totals.by_category[key] || 0) + amt;
+    }
+
+    // Respond with period metadata + transactions
+    return res.json({ period: period || null, start_date, end_date, transactions: filtered, totals });
   } catch (err) {
     console.error("Error fetching transactions:", err);
     res.status(500).json({ error: "Failed to fetch transactions" });

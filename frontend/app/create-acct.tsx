@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { Alert, Button, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 const BASE_URL = Constants.expoConfig.extra.API_URL;
+
 export default function CreateAcctScreen() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

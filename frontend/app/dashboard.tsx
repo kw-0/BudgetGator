@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import DateTimePickerModal from "react-native-modal-datetime-picker";
+// date filtering is handled server-side by period; remove client date-picker
 import { WebView } from "react-native-webview";
 
 const BASE_URL = Constants.expoConfig.extra.API_URL;
@@ -23,17 +23,19 @@ export default function Dashboard() {
   const [linkToken, setLinkToken] = useState(null);
   const [loading, setLoading] = useState(false);
   const [transactions, setTransactions] = useState([]);
-  const [showPicker, setShowPicker] = useState(false);
-  const [pickerType, setPickerType] = useState("start");
+  const [period, setPeriod] = useState(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    return `${y}-${m}`;
+  });
+  const [totals, setTotals] = useState({ count: 0, total_amount: 0, by_category: {} });
+  
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
-  const [startDate, setStartDate] = useState(new Date());
-  const [endDate, setEndDate] = useState(new Date());
-  const [dateFilterVisible, setDateFilterVisible] = useState(false);
-  const [filterStartDate, setFilterStartDate] = useState(null);
-  const [filterEndDate, setFilterEndDate] = useState(null);
+  // date filtering moved to server via ?period=YYYY-MM; client no longer needs date pickers
 
   async function startPlaidLink() {
     try {
@@ -118,12 +120,11 @@ export default function Dashboard() {
     try {
       setLoading(true);
       const token = await AsyncStorage.getItem("token");
-      const res = await fetch(
-        `${BASE_URL}/api/plaid/transactions?start_date=${startDate
-          .toISOString()
-          .slice(0, 10)}&end_date=${endDate.toISOString().slice(0, 10)}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      // Request transactions for the selected period (YYYY-MM) and optional category
+      const category = selectedCategory && selectedCategory !== "All" ? selectedCategory : null;
+      let url = `${BASE_URL}/api/plaid/transactions?period=${period}`;
+      if (category) url += `&category=${encodeURIComponent(category)}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
@@ -137,16 +138,53 @@ export default function Dashboard() {
       if (rawList.length === 0) {
         Alert.alert("No Transactions", "Bank linked but no recent activity found.");
         setTransactions([]);
+        setTotals({ count: 0, total_amount: 0, by_category: {} });
         return;
       }
 
       const normalized = rawList.map(normalizeTransaction);
       setTransactions(normalized);
+      // capture totals if provided by server
+      if (data.totals) setTotals(data.totals);
     } catch (err) {
       console.error("Fetch error:", err);
       Alert.alert("Error", "Unable to load transactions.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Auto-fetch when period or selectedCategory changes
+  useEffect(() => {
+    fetchTransactions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, selectedCategory]);
+
+  function prevMonth() {
+    const [y, m] = period.split("-").map((p) => parseInt(p, 10));
+    const d = new Date(y, m - 1, 1);
+    d.setMonth(d.getMonth() - 1);
+    const ny = d.getFullYear();
+    const nm = String(d.getMonth() + 1).padStart(2, "0");
+    setPeriod(`${ny}-${nm}`);
+  }
+
+  function nextMonth() {
+    const [y, m] = period.split("-").map((p) => parseInt(p, 10));
+    const d = new Date(y, m - 1, 1);
+    d.setMonth(d.getMonth() + 1);
+    const ny = d.getFullYear();
+    const nm = String(d.getMonth() + 1).padStart(2, "0");
+    setPeriod(`${ny}-${nm}`);
+  }
+
+  function prettyPeriod(p) {
+    try {
+      const [y, m] = p.split("-").map((s) => parseInt(s, 10));
+      const d = new Date(y, m - 1, 1);
+      return d.toLocaleString(undefined, { month: "long", year: "numeric" });
+    } catch (e) {
+      return p;
     }
   }
 
@@ -156,18 +194,9 @@ export default function Dashboard() {
   }, [transactions]);
 
   const filteredTransactions = useMemo(() => {
-    let list = transactions;
-    if (selectedCategory !== "All") {
-      list = list.filter((tx) => tx.category === selectedCategory);
-    }
-    if (filterStartDate && filterEndDate) {
-      list = list.filter((tx) => {
-        const txDate = new Date(tx.date);
-        return txDate >= filterStartDate && txDate <= filterEndDate;
-      });
-    }
-    return list;
-  }, [transactions, selectedCategory, filterStartDate, filterEndDate]);
+    if (selectedCategory === "All") return transactions;
+    return transactions.filter((tx) => tx.category === selectedCategory);
+  }, [transactions, selectedCategory]);
 
   function renderItem({ item }) {
     return (
@@ -216,6 +245,22 @@ export default function Dashboard() {
             <Button title="Link Bank Account" onPress={startPlaidLink} />
             <View style={{ height: 12 }} />
             <Button title="Get Transactions" onPress={fetchTransactions} />
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
+              <TouchableOpacity onPress={prevMonth} style={{ padding: 8, backgroundColor: '#eee', borderRadius: 6, marginRight: 8 }}>
+                <Text>{'‹ Prev'}</Text>
+              </TouchableOpacity>
+              <View style={{ flex: 1, alignItems: 'center' }}>
+                <Text style={{ fontWeight: '600' }}>{prettyPeriod(period)}</Text>
+              </View>
+              <TouchableOpacity onPress={nextMonth} style={{ padding: 8, backgroundColor: '#eee', borderRadius: 6, marginLeft: 8 }}>
+                <Text>{'Next ›'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ marginTop: 8 }}>
+              <Text style={{ fontWeight: '600' }}>Summary: {totals.count} transactions • {formatCurrency(totals.total_amount || 0)}</Text>
+            </View>
 
             {/* Category Filter */}
             {transactions.length > 0 && (
@@ -272,87 +317,7 @@ export default function Dashboard() {
               </View>
             )}
 
-            {/* Date Filter Button */}
-            {transactions.length > 0 && (
-              <View style={{ marginVertical: 12 }}>
-                <Text style={{ fontWeight: "bold", marginBottom: 4 }}>Filter by Date:</Text>
-                <TouchableOpacity
-                  style={{ backgroundColor: "#007AFF", padding: 12, borderRadius: 8, alignItems: "center" }}
-                  onPress={() => setDateFilterVisible(true)}
-                >
-                  <Text style={{ color: "white", fontWeight: "bold" }}>
-                    {filterStartDate && filterEndDate
-                      ? `${filterStartDate.toLocaleDateString()} - ${filterEndDate.toLocaleDateString()}`
-                      : "Filter by Date"}
-                  </Text>
-                </TouchableOpacity>
-
-                <Modal
-                  visible={dateFilterVisible}
-                  transparent
-                  animationType="slide"
-                  onRequestClose={() => {
-                    setDateFilterVisible(false);
-                    setShowPicker(false);
-                  }}
-                >
-                  <View style={{ flex: 1, justifyContent: "center", backgroundColor: "rgba(0,0,0,0.5)", padding: 20 }}>
-                    <View style={{ backgroundColor: "white", borderRadius: 10, padding: 20, maxHeight: "80%" }}>
-                      <Text style={{ fontSize: 16, fontWeight: "bold", marginBottom: 10 }}>Select Date Range</Text>
-                      <Button
-                        title={`From: ${filterStartDate ? filterStartDate.toLocaleDateString() : "Not set"}`}
-                        onPress={() => {
-                          setPickerType("filterStart");
-                          setShowPicker(true);
-                        }}
-                      />
-                      <View style={{ height: 8 }} />
-                      <Button
-                        title={`To: ${filterEndDate ? filterEndDate.toLocaleDateString() : "Not set"}`}
-                        onPress={() => {
-                          setPickerType("filterEnd");
-                          setShowPicker(true);
-                        }}
-                      />
-                      <View style={{ height: 12 }} />
-                      <Button
-                        title="Clear Date Filter"
-                        onPress={() => {
-                          setFilterStartDate(null);
-                          setFilterEndDate(null);
-                          setDateFilterVisible(false);
-                        }}
-                      />
-                      <View style={{ height: 8 }} />
-                      <Button
-                        title="Close"
-                        onPress={() => {
-                          setDateFilterVisible(false);
-                          setShowPicker(false);
-                        }}
-                        color="gray"
-                      />
-
-                      <DateTimePickerModal
-                        isVisible={showPicker}
-                        mode="date"
-                        date={pickerType === "filterStart" ? filterStartDate || new Date() : filterEndDate || filterStartDate || new Date()}
-                        onConfirm={(date) => {
-                          setShowPicker(false);
-                          if (pickerType === "filterStart") {
-                            setFilterStartDate(date);
-                            if (!filterEndDate || filterEndDate < date) setFilterEndDate(date);
-                          } else {
-                            setFilterEndDate(date);
-                          }
-                        }}
-                        onCancel={() => setShowPicker(false)}
-                      />
-                    </View>
-                  </View>
-                </Modal>
-              </View>
-            )}
+            {/* Date filter removed — server supplies month periods */}
           </View>
         )}
       </View>
