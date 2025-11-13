@@ -16,10 +16,12 @@ export default function TabsLayout() {
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap;
 
-          if (route.name === "dashboard") {
+          if (route.name === "dash") {
             iconName = focused ? "home" : "home-outline";
           } else if (route.name === "nav") {
             iconName = focused ? "card" : "card-outline";
+          } else if (route.name === "settings") {
+            iconName = focused ? "settings" : "settings-outline";
           } else {
             iconName = "help-circle-outline";
           }
@@ -30,6 +32,7 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="dash" options={{ title: "Dash" }} />
       <Tabs.Screen name="nav" options={{ title: "Nav" }} />
+      <Tabs.Screen name="settings" options={{ title: "Settings" }} />
     </Tabs>
   );
 }
