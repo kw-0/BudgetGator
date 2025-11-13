@@ -18,7 +18,7 @@ import { WebView } from "react-native-webview";
 
 const BASE_URL = Constants.expoConfig.extra.API_URL;
 
-export default function Dash() {
+export default function Dashboard() {
   const [showPlaid, setShowPlaid] = useState(false);
   const [linkToken, setLinkToken] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -206,6 +206,8 @@ export default function Dash() {
     );
   }
 
+
+
   return (
     <View style={{ flex: 1 }}>
       <View style={{ flex: 1 }}>
@@ -258,8 +260,10 @@ export default function Dash() {
             <ActivityIndicator />
           ) : (
             <View>
-              <Button title="Link Bank Account" onPress={startPlaidLink} />
-              <View style={{ height: 12 }} />
+              <View style={{ marginTop: 220 }}>  
+                <Button title="Link Bank Account" onPress={startPlaidLink} />
+              </View>
+              <View style={{ height: 12, marginBottom: 2, marginTop: 1 }} />
               <Button title="Get Transactions" onPress={fetchTransactions} />
 
               {/* Category Filter */}
@@ -418,7 +422,7 @@ const styles = StyleSheet.create({
   negative: { color: "red" },
   positive: { color: "green" },
   separator: { height: 1, backgroundColor: "#ccc" },
-  empty: { flex: 1, justifyContent: "center", alignItems: "center" },
+  empty: { flex: 1, justifyContent: "center", alignItems: "center", marginTop: 250 }, // fix for img
   emptyText: { color: "#999" },
   modalOverlay: { flex: 1, justifyContent: "center", backgroundColor: "#000000aa" },
   modalContent: { backgroundColor: "white", margin: 20, borderRadius: 10, padding: 20 },

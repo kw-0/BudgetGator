@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from "react-native";
 export default function Nav() {
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>This is the Nav screen 🏠</Text>
+      <Text style={styles.text}>hi this is nav</Text>
     </View>
   );
 }

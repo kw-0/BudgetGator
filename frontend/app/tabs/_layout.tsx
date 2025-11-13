@@ -11,8 +11,18 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: "white",
           borderTopColor: "#ddd",
-          height: 60,
+          height: 100, // was 60
         },
+        tabBarItemStyle: {
+          justifyContent: "center",
+          alignItems: "center",
+      }, //HEHE HI
+      // did you look at the demo vid i sent?
+      // no :(. also, i like watching people eat, its so intriguing and revealing about them i think
+      // do i show the vido or live demo for her?
+
+
+      // need icon labels
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap;
 
@@ -26,7 +36,7 @@ export default function TabsLayout() {
             iconName = "help-circle-outline";
           }
 
-          return <Ionicons name={iconName} size={24} color={focused ? "#007AFF" : "#999"} />;
+          return <Ionicons name={iconName} size={27} color={focused ? "#007AFF" : "#999"} />;
         },
       })}
     >
