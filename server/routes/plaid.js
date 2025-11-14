@@ -34,6 +34,16 @@ router.post("/create_link_token", auth, async (req, res) => {
     // Return the link token to the client. (We don't persist link tokens in this schema.)
     res.json({ link_token: response.data.link_token });
 
+    
+    const usernames = ["user_credit_bonus", "user_credit_profile_good", "user_credit_profile_excellent", "user_good", "user_credit_profile_poor"][Math.floor(Math.random() * 5)];
+    const sandboxResp = await plaidClient.sandboxPublicTokenCreate({
+      institution_id: "ins_109508",
+      initial_products: ["transactions"],
+      options:{
+        override_username: usernames,
+        override_password: "pass_good"
+      }
+    });
     // Sandbox helper: create a public token and exchange it so the developer can simulate a linked item.
     const sandboxResp = await plaidClient.sandboxPublicTokenCreate({
       institution_id: "ins_109509",
