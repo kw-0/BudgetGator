@@ -7,7 +7,7 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarShowLabel: false,
+        tabBarShowLabel: true,
         tabBarStyle: {
           backgroundColor: "white",
           borderTopColor: "#ddd",
@@ -31,13 +31,37 @@ export default function TabsLayout() {
             iconName = "help-circle-outline";
           }
 
-          return <Ionicons name={iconName} size={27} color={focused ? "#007AFF" : "#999"} />;
+          return (
+            <Ionicons
+              name={iconName}
+              size={27}
+              color={focused ? "#007AFF" : "#999"}
+            />
+          );
         },
       })}
     >
-      <Tabs.Screen name="index" options={{ title: "Dashboard" }} />
-      <Tabs.Screen name="goals" options={{ title: "Goals" }} />
-      <Tabs.Screen name="settings" options={{ title: "Settings" }} />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: "Dashboard",
+          tabBarLabel: "Dashboard",
+        }}
+      />
+      <Tabs.Screen
+        name="goals"
+        options={{
+          title: "Goals",
+          tabBarLabel: "Goals",
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: "Settings",
+          tabBarLabel: "Settings",
+        }}
+      />
     </Tabs>
   );
 }
