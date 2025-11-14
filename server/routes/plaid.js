@@ -36,8 +36,13 @@ router.post("/create_link_token", auth, async (req, res) => {
 
     // Sandbox helper: create a public token and exchange it so the developer can simulate a linked item.
     const sandboxResp = await plaidClient.sandboxPublicTokenCreate({
-      institution_id: "ins_109508",
+      institution_id: "ins_109509",
       initial_products: ["transactions"],
+      options: {
+        override_username: "user_credit_profile_good",
+        override_password: "pass_good",
+    },
+
     });
     const publicToken = sandboxResp.data.public_token;
     const exchangeResp = await plaidClient.itemPublicTokenExchange({ public_token: publicToken });
