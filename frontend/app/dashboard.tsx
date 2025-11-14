@@ -103,9 +103,20 @@ export default function Dashboard() {
 
   function formatDate(dateString) {
     if (!dateString) return "";
-    const d = new Date(dateString);
-    if (isNaN(d.getTime())) return dateString;
-    return d.toLocaleDateString();
+    // Plaid returns date-only strings (YYYY-MM-DD). Parsing with `new Date(string)`
+    // treats it as UTC and can shift to the prior day in some timezones.
+    // Parse components and create a local date to avoid timezone shifts.
+    const parts = String(dateString).split("-");
+    if (parts.length === 3) {
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      const d = parseInt(parts[2], 10);
+      if (!Number.isNaN(y) && !Number.isNaN(m) && !Number.isNaN(d)) {
+        const local = new Date(y, m - 1, d);
+        return local.toLocaleDateString();
+      }
+    }
+    return dateString;
   }
 
   function formatDisplayText(text) {
@@ -182,6 +193,7 @@ export default function Dashboard() {
     try {
       const [y, m] = p.split("-").map((s) => parseInt(s, 10));
       const d = new Date(y, m - 1, 1);
+      // Show month and year (e.g., "November 2025")
       return d.toLocaleString(undefined, { month: "long", year: "numeric" });
     } catch (e) {
       return p;
@@ -192,11 +204,6 @@ export default function Dashboard() {
     const set = new Set(transactions.map((tx) => tx.category || "Uncategorized"));
     return ["All", ...Array.from(set)];
   }, [transactions]);
-
-  const filteredTransactions = useMemo(() => {
-    if (selectedCategory === "All") return transactions;
-    return transactions.filter((tx) => tx.category === selectedCategory);
-  }, [transactions, selectedCategory]);
 
   function renderItem({ item }) {
     return (
@@ -330,7 +337,7 @@ export default function Dashboard() {
           </View>
         ) : (
           <FlatList
-            data={filteredTransactions}
+            data={transactions}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
             ItemSeparatorComponent={() => <View style={styles.separator} />}

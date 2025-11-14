@@ -125,10 +125,10 @@ router.get("/transactions", auth, async (req, res) => {
       const parts = String(period).split('-');
       if (parts.length === 2) {
         const year = parseInt(parts[0], 10);
-        const monthIndex = parseInt(parts[1], 10) - 1; // 0-based
-        if (!Number.isNaN(year) && monthIndex >= 0 && monthIndex <= 11) {
-          const start = new Date(year, monthIndex, 1);
-          const end = new Date(year, monthIndex + 1, 0); // last day of month
+        const month = parseInt(parts[1], 10); // 1-based (1=Jan, 11=Nov)
+        if (!Number.isNaN(year) && month >= 1 && month <= 12) {
+          const start = new Date(Date.UTC(year, month - 1, 1));
+          const end = new Date(Date.UTC(year, month, 0)); // day 0 of next month = last day of current month
           start_date = start.toISOString().slice(0, 10);
           end_date = end.toISOString().slice(0, 10);
         }
@@ -163,7 +163,20 @@ router.get("/transactions", auth, async (req, res) => {
     }
 
     // Normalize and filter transactions by category if requested
+    // Also exclude income transactions (negative amounts in Plaid indicate credits/income)
+    // And strictly enforce the month when `period=YYYY-MM` is provided
     const filtered = allTransactions.filter((tx) => {
+      // Enforce strict month match on POSTED date only to match UI
+      if (period) {
+        const posted = tx && tx.date ? String(tx.date) : '';
+        const txMonth = posted.slice(0, 7);
+        if (txMonth !== period) return false;
+      }
+
+      // Skip income transactions (amount < 0)
+      const amt = typeof tx.amount === 'number' ? tx.amount : Number(tx.amount) || 0;
+      if (amt < 0) return false;
+
       if (!categoryFilter) return true;
       const cat = (tx.personal_finance_category && tx.personal_finance_category.primary) ||
         (Array.isArray(tx.category) ? tx.category.join(', ') : tx.category) || '';
@@ -177,7 +190,7 @@ router.get("/transactions", auth, async (req, res) => {
     const totals = { count: filtered.length, total_amount: 0, by_category: {} };
     for (const tx of filtered) {
       const amt = typeof tx.amount === 'number' ? tx.amount : Number(tx.amount) || 0;
-      totals.total_amount += amt;
+      totals.total_amount += amt; 
       const cat = (tx.personal_finance_category && tx.personal_finance_category.primary) ||
         (Array.isArray(tx.category) ? tx.category.join(', ') : tx.category) || 'Uncategorized';
       const key = String(cat);
