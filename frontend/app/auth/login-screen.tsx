@@ -40,7 +40,7 @@ export default function LoginScreen() {
 
       
       // Navigate to dashboard
-      router.push("./dashboard");
+      router.push("./tabs/index");
     } catch (error) {
       console.error("Error logging in:", error);
       Alert.alert("Network Error", "Unable to connect to server");
