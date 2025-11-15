@@ -8,7 +8,12 @@ const UserSchema = new mongoose.Schema({
   plaidItemIds: { type: [String], default: [] },
   plaidAccessTokens: { type: [String], default: [] },
 
-
+  monthlyGoals: [
+    {
+      period: { type: String, required: true }, // YYYY-MM format
+      amount: { type: Number, required: true }, // Goal spending limit
+    },
+  ],
 });
 
 module.exports = mongoose.model("User", UserSchema);
