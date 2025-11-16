@@ -34,13 +34,11 @@ export default function LoginScreen() {
       }
 
       console.log("Login successful:", data);
-      Alert.alert("Success", "Login successful");
       await AsyncStorage.setItem("userId", data.user.id);
       await AsyncStorage.setItem("token", data.token);
 
-      
-      // Navigate to dashboard
-      router.push("./dashboard");
+      // Navigate to dashboard tab
+      router.replace("/tabs");
     } catch (error) {
       console.error("Error logging in:", error);
       Alert.alert("Network Error", "Unable to connect to server");
