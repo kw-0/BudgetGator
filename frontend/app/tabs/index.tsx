@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
+import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -18,7 +19,16 @@ import { WebView } from "react-native-webview";
 
 const BASE_URL = Constants.expoConfig.extra.API_URL;
 
+async function handleTokenExpired(router) {
+  await AsyncStorage.removeItem("token");
+  await AsyncStorage.removeItem("userId");
+  Alert.alert("Session Expired", "Please log in again", [
+    { text: "OK", onPress: () => router.replace("/auth/login-screen") },
+  ]);
+}
+
 export default function Dashboard() {
+  const router = useRouter();
   const [showPlaid, setShowPlaid] = useState(false);
   const [linkToken, setLinkToken] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -128,6 +138,10 @@ export default function Dashboard() {
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
+        if (errorData.code === "token_expired") {
+          await handleTokenExpired(router);
+          return;
+        }
         console.log("Fetch failed:", errorData);
         Alert.alert("Error", errorData.message || "Failed to fetch transactions");
         return;
