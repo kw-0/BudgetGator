@@ -4,8 +4,6 @@ const auth = require("../middleware/auth");
 const { Configuration, PlaidApi, PlaidEnvironments } = require("plaid");
 const User = require("../models/User");
 
-
-
 // Configure Plaid client
 const config = new Configuration({
   basePath: PlaidEnvironments.sandbox, 
@@ -194,6 +192,9 @@ router.get("/transactions", auth, async (req, res) => {
       }
     }
 
+    // Normalize and filter transactions by category if requested
+    // Also exclude income transactions (negative amounts in Plaid indicate credits/income)
+    // And strictly enforce the month when `period=YYYY-MM` is provided
     console.log(`Total transactions before filtering: ${allTransactions.length}`);
 
     // Filter by account_id if specified
@@ -238,6 +239,22 @@ router.get("/transactions", auth, async (req, res) => {
       totals.by_category[key] = (totals.by_category[key] || 0) + amt;
     }
 
+    // Include goal for this period if it exists
+    let goal = null;
+    if (period) {
+      const userGoal = user.monthlyGoals?.find((g) => g.period === period);
+      if (userGoal) {
+        goal = {
+          amount: userGoal.amount,
+          spent: totals.total_amount,
+          remaining: userGoal.amount - totals.total_amount,
+          percentage: (totals.total_amount / userGoal.amount) * 100,
+        };
+      }
+    }
+
+    // Respond with period metadata + transactions + goal progress
+    return res.json({ period: period || null, start_date, end_date, transactions: filtered, totals, goal });
     // Respond with period metadata + transactions
     return res.json({ 
       period: period || null, 

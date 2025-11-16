@@ -17,6 +17,9 @@ function auth(req, res, next) {
     next();
   } catch (err) {
     console.error("JWT verification failed:", err);
+    if (err.name === "TokenExpiredError") {
+      return res.status(401).json({ message: "Token expired", code: "token_expired" });
+    }
     return res.status(401).json({ message: "Token invalid" });
   }
 }

@@ -6,8 +6,8 @@ const jwt = require("jsonwebtoken");
 // REGISTER
 router.post("/register", async (req, res) => {
   try {
-    const { username,email, password } = req.body;
-    if (!username || !email || !password) {
+    const { username, email, password, isPrimaryUser } = req.body;
+    if (!username || !email || !password || isPrimaryUser === undefined) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
@@ -17,7 +17,7 @@ router.post("/register", async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new User({ username, email, password: hashedPassword });
+    const newUser = new User({ username, email, password: hashedPassword, isPrimaryUser });
     await newUser.save()
 
     res.status(201).json({ message: "User created" });
@@ -64,5 +64,28 @@ router.post("/login", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+// refresh token when it expires in 1hr for create account server error
+router.post("/refresh", (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ message: "No token provided" });
+
+    const decoded = jwt.decode(token);
+    if (!decoded) return res.status(401).json({ message: "Invalid token" });
+
+    const newToken = jwt.sign(
+      { id: decoded.id },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    res.json({ token: newToken });
+  } catch (err) {
+    console.error("Refresh error:", err);
+    res.status(500).json({ message: "Server error refreshing token" });
+  }
+});
+
 
 module.exports = router;
