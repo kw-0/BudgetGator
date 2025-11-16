@@ -6,8 +6,8 @@ import { Alert, Button, StyleSheet, Text, TextInput, View } from "react-native";
 
 const BASE_URL = Constants.expoConfig.extra.API_URL;
 export default function LoginScreen() {
-  const [identifier, setIdentifier] = useState("sam");
-  const [password, setPassword] = useState("pass");
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
   const router = useRouter();
 
   const handleLogin = async () => {
