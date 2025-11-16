@@ -6,8 +6,8 @@ import { Alert, Button, StyleSheet, Text, TextInput, View } from "react-native";
 
 const BASE_URL = Constants.expoConfig.extra.API_URL;
 export default function LoginScreen() {
-  const [identifier, setIdentifier] = useState("test@gmail.com");
-  const [password, setPassword] = useState("123");
+  const [identifier, setIdentifier] = useState("sam");
+  const [password, setPassword] = useState("pass");
   const router = useRouter();
 
   const handleLogin = async () => {
@@ -60,7 +60,7 @@ export default function LoginScreen() {
         placeholder="Username/Email"
         value={identifier}
         onChangeText={setIdentifier}
-        style={styles.loginboxes}
+        style={localStyles.loginboxes}
         autoCapitalize="none"
         placeholderTextColor="#999"
       />
@@ -70,7 +70,7 @@ export default function LoginScreen() {
         secureTextEntry
         value={password}
         onChangeText={setPassword}
-        style={styles.loginboxes}
+        style={localStyles.loginboxes}
         autoCapitalize="none"
         placeholderTextColor="#999"
       />
@@ -81,13 +81,14 @@ export default function LoginScreen() {
     </View>
   );
 }
-const styles = StyleSheet.create({
-    loginboxes: {
-          width: "100%",
-          padding: 10,
-          marginVertical: 8,
-          borderWidth: 1,
-          borderColor: "#ccc",
-          borderRadius: 6,
-    }
-  })
+
+const localStyles = StyleSheet.create({
+  loginboxes: {
+    width: "100%",
+    padding: 10,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 6,
+  }
+});

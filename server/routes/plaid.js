@@ -114,6 +114,7 @@ router.get("/return", async (req, res) => {
 router.get("/transactions", auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
+    
     // Determine date range: support ?period=YYYY-MM or explicit start_date & end_date
     let start_date = req.query.start_date;
     let end_date = req.query.end_date;
@@ -143,16 +144,47 @@ router.get("/transactions", auth, async (req, res) => {
 
     // Optional category filter
     const categoryFilter = req.query.category ? String(req.query.category).toLowerCase() : null;
+    
+    // NEW: Optional account filtering
+    const accountIdFilter = req.query.account_id ? String(req.query.account_id) : null;
+    const accessTokenFilter = req.query.access_token ? String(req.query.access_token) : null;
 
-    // Use all stored access tokens for this user (aggregate across items)
-    const tokens = Array.isArray(user.plaidAccessTokens) && user.plaidAccessTokens.length ? user.plaidAccessTokens : [];
-    if (!tokens || tokens.length === 0) return res.status(400).json({ message: 'No bank linked' });
+    console.log('Transaction filters:', { 
+      period, 
+      start_date, 
+      end_date, 
+      categoryFilter, 
+      accountIdFilter: accountIdFilter ? 'present' : 'none',
+      accessTokenFilter: accessTokenFilter ? 'present' : 'none'
+    });
+
+    // Determine which tokens to use
+    let tokensToUse = [];
+    if (accessTokenFilter) {
+      // Filter by specific access token
+      console.log('Filtering by access token');
+      tokensToUse = [accessTokenFilter];
+    } else {
+      // Use all tokens
+      tokensToUse = Array.isArray(user.plaidAccessTokens) && user.plaidAccessTokens.length 
+        ? user.plaidAccessTokens 
+        : [];
+    }
+
+    if (!tokensToUse || tokensToUse.length === 0) {
+      return res.status(400).json({ message: 'No bank linked' });
+    }
 
     let allTransactions = [];
-    for (const token of tokens) {
+    for (const token of tokensToUse) {
       try {
-        const resp = await plaidClient.transactionsGet({ access_token: token, start_date, end_date });
+        const resp = await plaidClient.transactionsGet({ 
+          access_token: token, 
+          start_date, 
+          end_date 
+        });
         const txns = resp.data.transactions || [];
+        console.log(`Fetched ${txns.length} transactions for token`);
         allTransactions = allTransactions.concat(txns);
       } catch (e) {
         console.error('Error fetching transactions for one token:', e.response?.data || e.message || e);
@@ -163,6 +195,16 @@ router.get("/transactions", auth, async (req, res) => {
     // Normalize and filter transactions by category if requested
     // Also exclude income transactions (negative amounts in Plaid indicate credits/income)
     // And strictly enforce the month when `period=YYYY-MM` is provided
+    console.log(`Total transactions before filtering: ${allTransactions.length}`);
+
+    // Filter by account_id if specified
+    if (accountIdFilter) {
+      console.log('Filtering by account_id:', accountIdFilter);
+      allTransactions = allTransactions.filter(tx => tx.account_id === accountIdFilter);
+      console.log(`Transactions after account filter: ${allTransactions.length}`);
+    }
+
+    // Filter by category if requested
     const filtered = allTransactions.filter((tx) => {
       // Enforce strict month match on POSTED date only to match UI
       if (period) {
@@ -180,6 +222,8 @@ router.get("/transactions", auth, async (req, res) => {
         (Array.isArray(tx.category) ? tx.category.join(', ') : tx.category) || '';
       return String(cat).toLowerCase().includes(categoryFilter);
     });
+
+    // console.log(`Final filtered transactions: ${filtered.length}`);
 
     // Sort by date descending
     filtered.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
@@ -211,11 +255,267 @@ router.get("/transactions", auth, async (req, res) => {
 
     // Respond with period metadata + transactions + goal progress
     return res.json({ period: period || null, start_date, end_date, transactions: filtered, totals, goal });
+    // Respond with period metadata + transactions
+    return res.json({ 
+      period: period || null, 
+      start_date, 
+      end_date, 
+      transactions: filtered, 
+      totals,
+      filters_applied: {
+        account_id: accountIdFilter || 'all',
+        category: categoryFilter || 'all'
+      }
+    });
   } catch (err) {
     console.error("Error fetching transactions:", err);
     res.status(500).json({ error: "Failed to fetch transactions" });
   }
 });
+
+router.get("/accounts", auth, async (req, res) => {
+  try {
+    console.log('=== /accounts endpoint called ===');
+    console.log('req.user:', JSON.stringify(req.user));
+    console.log('req.user.id:', req.user?.id);
+    
+    if (!req.user || !req.user.id) {
+      console.error('No user ID in request. req.user:', req.user);
+      return res.status(401).json({ 
+        error: "Authentication failed - no user ID", 
+        accounts: [] 
+      });
+    }
+    
+    console.log('Fetching user from DB with ID:', req.user.id);
+    
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      console.error('User not found in database for ID:', req.user.id);
+      return res.status(404).json({ error: "User not found", accounts: [] });
+    }
+    
+    console.log('User found:', user._id);
+    console.log('User has', user.plaidAccessTokens?.length || 0, 'access tokens');
+    
+    const tokens = user.plaidAccessTokens || [];
+    
+    if (tokens.length === 0) {
+      console.log('No access tokens found for user');
+      return res.json({ accounts: [], message: 'No banks linked yet' });
+    }
+    
+    const accounts = [];
+    
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
+      try {
+        console.log(`Fetching accounts for token ${i + 1}/${tokens.length}`);
+        
+        const resp = await plaidClient.accountsGet({ access_token: token });
+        
+        console.log('Accounts received:', resp.data.accounts.length);
+        console.log('Account details:', resp.data.accounts.map(a => ({
+          id: a.account_id,
+          name: a.name,
+          mask: a.mask,
+          type: a.type,
+          subtype: a.subtype
+        })));
+        
+        accounts.push(...resp.data.accounts.map(acct => ({ 
+          ...acct, 
+          access_token: token,
+          id: acct.account_id
+        })));
+      } catch (e) {
+        console.error(`Error fetching accounts for token ${i + 1}:`, e.response?.data || e.message || e);
+      }
+    }
+    
+    console.log('Total accounts to return:', accounts.length);
+    
+    res.json({ accounts });
+  } catch (err) {
+    console.error("Error in /accounts endpoint:", err.message);
+    console.error("Error stack:", err.stack);
+    res.status(500).json({ 
+      error: "Failed to fetch accounts",
+      message: err.message,
+      details: err.stack,
+      accounts: [] 
+    });
+  }
+});
+
+// // Sandbox-only: simulate multiple credit cards + transactions
+// router.post("/sandbox/cards-and-transactions", auth, async (req, res) => {
+//   try {
+//     // 1. Create a sandbox Item with transactions
+//     const publicTokenResponse = await plaidClient.sandboxPublicTokenCreate({
+//       institution_id: "ins_109508", // First Platypus Bank
+//       initial_products: ["transactions"],
+//     });
+
+//     const public_token = publicTokenResponse.data.public_token;
+
+//     // 2. Exchange for access_token
+//     const exchangeResponse = await plaidClient.itemPublicTokenExchange({ public_token });
+//     const access_token = exchangeResponse.data.access_token;
+
+//     // 3. Get accounts and filter for credit cards
+//     const accountsResponse = await plaidClient.accountsGet({ access_token });
+//     const creditCardIds = accountsResponse.data.accounts
+//       .filter((acct) => acct.subtype === "credit card")
+//       .map((acct) => acct.account_id);
+
+//     // 4. Sync transactions (no cursor = full history)
+//     let cursor = null;
+//     let added = [];
+//     let hasMore = true;
+
+//     while (hasMore) {
+//       const response = await plaidClient.transactionsSync({ access_token, cursor });
+//       const data = response.data;
+
+//       added = added.concat(data.added);
+//       cursor = data.next_cursor;
+//       hasMore = data.has_more;
+//     }
+
+//     // 5. Filter for credit card transactions only
+//     const creditCardTx = added.filter((tx) => creditCardIds.includes(tx.account_id));
+
+//     res.json({
+//       message: "Synced sandbox credit card transactions",
+//       transactions: creditCardTx,
+//     });
+//   } catch (err) {
+//     console.error("Sync error:", err.response?.data || err);
+//     res.status(500).json({ error: "Failed to sync transactions" });
+//   }
+// });
+
+// added from quickstart sandbox
+// probably need to have sandbox users implemented for these to work
+
+
+// // Retrieve Transactions for an Item
+// // https://plaid.com/docs/#transactions
+// app.get('/api/transactions', function (request, response, next) {
+//   Promise.resolve()
+//     .then(async function () {
+//       // Set cursor to empty to receive all historical updates
+//       let cursor = null;
+
+//       // New transaction updates since "cursor"
+//       let added = [];
+//       let modified = [];
+//       // Removed transaction ids
+//       let removed = [];
+//       let hasMore = true;
+//       // Iterate through each page of new transaction updates for item
+//       while (hasMore) {
+//         const request = {
+//           access_token: ACCESS_TOKEN,
+//           cursor: cursor,
+//         };
+//         const response = await client.transactionsSync(request)
+//         const data = response.data;
+
+//         // If no transactions are available yet, wait and poll the endpoint.
+//         // Normally, we would listen for a webhook, but the Quickstart doesn't
+//         // support webhooks. For a webhook example, see
+//         // https://github.com/plaid/tutorial-resources or
+//         // https://github.com/plaid/pattern
+//         cursor = data.next_cursor;
+//         if (cursor === "") {
+//           await sleep(2000);
+//           continue;
+//         }
+
+//         // Add this page of results
+//         added = added.concat(data.added);
+//         modified = modified.concat(data.modified);
+//         removed = removed.concat(data.removed);
+//         hasMore = data.has_more;
+
+//         prettyPrintResponse(response);
+//       }
+
+//       const compareTxnsByDateAscending = (a, b) => (a.date > b.date) - (a.date < b.date);
+//       // Return the 8 most recent transactions
+//       const recently_added = [...added].sort(compareTxnsByDateAscending).slice(-8);
+//       response.json({ latest_transactions: recently_added });
+//     })
+//     .catch(next);
+// });
+
+
+// // Retrieve real-time Balances for each of an Item's accounts
+// // https://plaid.com/docs/#balance
+// app.get('/api/balance', function (request, response, next) {
+//   Promise.resolve()
+//     .then(async function () {
+//       const balanceResponse = await client.accountsBalanceGet({
+//         access_token: ACCESS_TOKEN,
+//       });
+//       prettyPrintResponse(balanceResponse);
+//       response.json(balanceResponse.data);
+//     })
+//     .catch(next);
+// });
+
+// app.get('/api/statements', function (request, response, next) {
+//   Promise.resolve()
+//     .then(async function () {
+//       const statementsListResponse = await client.statementsList({ access_token: ACCESS_TOKEN });
+//       prettyPrintResponse(statementsListResponse);
+//       const pdfRequest = {
+//         access_token: ACCESS_TOKEN,
+//         statement_id: statementsListResponse.data.accounts[0].statements[0].statement_id
+//       };
+
+//       const statementsDownloadResponse = await client.statementsDownload(pdfRequest, {
+//         responseType: 'arraybuffer',
+//       });
+//       prettyPrintResponse(statementsDownloadResponse);
+//       response.json({
+//         json: statementsListResponse.data,
+//         pdf: statementsDownloadResponse.data.toString('base64'),
+//       });
+//     })
+//     .catch(next);
+// });
+
+
+// // Retrieve information about an Item
+// // https://plaid.com/docs/#retrieve-item
+// app.get('/api/item', function (request, response, next) {
+//   Promise.resolve()
+//     .then(async function () {
+//       // Pull the Item - this includes information about available products,
+//       // billed products, webhook information, and more.
+//       const itemResponse = await client.itemGet({
+//         access_token: ACCESS_TOKEN,
+//       });
+//       // Also pull information about the institution
+//       const configs = {
+//         institution_id: itemResponse.data.item.institution_id,
+//         country_codes: PLAID_COUNTRY_CODES,
+//       };
+//       const instResponse = await client.institutionsGetById(configs);
+//       prettyPrintResponse(itemResponse);
+//       response.json({
+//         item: itemResponse.data.item,
+//         institution: instResponse.data.institution,
+//       });
+//     })
+//     .catch(next);
+// });
+
+
+
 
 
 
