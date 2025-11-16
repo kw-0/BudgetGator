@@ -1,15 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import Constants from "expo-constants";
 import {
-  ActivityIndicator,
   Alert,
   Button,
-  FlatList,
   Modal,
-  ScrollView,
-  Alert, Button, StyleSheet,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -37,8 +34,10 @@ const BASE_URL = Constants.expoConfig.extra.API_URL;
 
 export default function Settings() {
   const router = useRouter();
+  const [modalVisible, setModalVisible] = useState(false);
+  const [benefactorUsername, setBenefactorUsername] = useState("");
 
-  async function handleLogout() {
+  const handleLogout = async () => {
     try {
       await AsyncStorage.removeItem("token");
       await AsyncStorage.removeItem("userId");
@@ -48,29 +47,58 @@ export default function Settings() {
       console.error("Logout error:", error);
       Alert.alert("Error", "Failed to log out");
     }
-  }
+  };
 
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Settings</Text>
-      <View style={{ marginTop: 20, width: 200 }}>
-        <Button title="Log Out" onPress={handleLogout} color="#ff3b30" />
-      </View>
-    </View>
-  );
-}
+  const linkBenefactor = async () => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        Alert.alert("Session", "Please log in again");
+        router.replace("/auth/login-screen");
+        return;
+      }
 
-  const isPrimaryUser = false; // Placeholder for actual user role check
+      const res = await fetch(`${BASE_URL}/api/plaid/create_link_token`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ benefactorUsername }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        Alert.alert("Error", data.error || "Failed to link benefactor");
+        return;
+      }
+
+      Alert.alert("Success", "Benefactor linked successfully!");
+      setModalVisible(false);
+      setBenefactorUsername("");
+    } catch (err) {
+      console.error("Error linking benefactor:", err);
+      Alert.alert("Error", "Server error while linking benefactor.");
+    }
+  };
 
 //   return (
 //     <View style={styles.container}>
-//       <Text style={styles.text}>hi this is settings</Text>
+//       <Text style={styles.title}>Settings</Text>
+//       <View style={{ marginTop: 20, width: 200 }}>
+        
+//       </View>
 //     </View>
 //   );
 // }
+
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>This is the Settings screen </Text>
+      <Text style={styles.text}>This is the Settings screen</Text>
+
+      <View style={{ marginTop: 20, width: 200 }}>
+          <Button title="Log Out" onPress={handleLogout} color="#ff3b30" />
+      </View>
 
       <View style={{ marginTop: 20 }}>
         <Button title="Add Benefactor" onPress={() => setModalVisible(true)} />
@@ -108,4 +136,42 @@ export default function Settings() {
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#f9f9f9", padding: 20 },
   title: { fontSize: 24, fontWeight: "bold", marginBottom: 20 },
+  text: { fontSize: 18, fontWeight: "600" },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalBox: {
+    width: "100%",
+    backgroundColor: "white",
+    borderRadius: 10,
+    padding: 20,
+  },
+  modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 12 },
+  input: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 6,
+    padding: 10,
+    fontSize: 16,
+    marginBottom: 12,
+  },
+  modalButtons: { flexDirection: "row", justifyContent: "flex-end" },
+  cancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    backgroundColor: "#aaa",
+    marginRight: 8,
+  },
+  saveBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    backgroundColor: "#007AFF",
+  },
+  btnText: { color: "white", fontWeight: "bold" },
 });
