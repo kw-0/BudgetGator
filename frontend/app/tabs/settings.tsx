@@ -1,5 +1,6 @@
-import React, { useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+import React, { useState } from "react";
 import Constants from "expo-constants";
 import {
   ActivityIndicator,
@@ -8,7 +9,7 @@ import {
   FlatList,
   Modal,
   ScrollView,
-  StyleSheet,
+  Alert, Button, StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -35,39 +36,38 @@ const BASE_URL = Constants.expoConfig.extra.API_URL;
 
 
 export default function Settings() {
-  const [modalVisible, setModalVisible] = useState(false);
-  const [benefactorUsername, setBenefactorUsername] = useState("");
+  const router = useRouter();
 
-const linkBenefactor = async () => {
-  try {
-      const res = await fetch(`${BASE_URL}/api/plaid/create_link_token`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        //Authorization: `Bearer ${token}`, // <-- if needed
-      },
-      body: JSON.stringify({
-        benefactorUsername,
-      }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      alert(data.error || "Failed to link benefactor");
-      return;
+  async function handleLogout() {
+    try {
+      await AsyncStorage.removeItem("token");
+      await AsyncStorage.removeItem("userId");
+      Alert.alert("Logged Out", "You have been logged out successfully");
+      router.replace("/auth/login-screen");
+    } catch (error) {
+      console.error("Logout error:", error);
+      Alert.alert("Error", "Failed to log out");
     }
-
-    alert("Benefactor linked successfully!");
-    setModalVisible(false);
-    setBenefactorUsername("");
-
-  } catch (err) {
-    console.error("Error linking benefactor:", err);
-    alert("Server error while linking benefactor.");
   }
-};
 
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Settings</Text>
+      <View style={{ marginTop: 20, width: 200 }}>
+        <Button title="Log Out" onPress={handleLogout} color="#ff3b30" />
+      </View>
+    </View>
+  );
+}
+
+  const isPrimaryUser = false; // Placeholder for actual user role check
+
+//   return (
+//     <View style={styles.container}>
+//       <Text style={styles.text}>hi this is settings</Text>
+//     </View>
+//   );
+// }
   return (
     <View style={styles.container}>
       <Text style={styles.text}>This is the Settings screen </Text>
@@ -106,60 +106,6 @@ const linkBenefactor = async () => {
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    justifyContent: "center", 
-    alignItems: "center", 
-    backgroundColor: "#f9f9f9" 
-  },
-  text: { 
-    fontSize: 18, 
-    fontWeight: "bold" 
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalBox: {
-    width: "85%",
-    padding: 20,
-    borderRadius: 10,
-    backgroundColor: "white",
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 15,
-    textAlign: "center",
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 16,
-    marginBottom: 20,
-  },
-  modalButtons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  cancelBtn: {
-    backgroundColor: "#aaa",
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-  },
-  saveBtn: {
-    backgroundColor: "#007AFF",
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-  },
-  btnText: {
-    color: "white",
-    fontWeight: "bold",
-  },
+  container: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#f9f9f9", padding: 20 },
+  title: { fontSize: 24, fontWeight: "bold", marginBottom: 20 },
 });

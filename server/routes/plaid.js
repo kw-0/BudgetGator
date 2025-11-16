@@ -4,8 +4,6 @@ const auth = require("../middleware/auth");
 const { Configuration, PlaidApi, PlaidEnvironments } = require("plaid");
 const User = require("../models/User");
 
-
-
 // Configure Plaid client
 const config = new Configuration({
   basePath: PlaidEnvironments.sandbox, 
@@ -34,11 +32,17 @@ router.post("/create_link_token", auth, async (req, res) => {
     // Return the link token to the client. (We don't persist link tokens in this schema.)
     res.json({ link_token: response.data.link_token });
 
-    // Sandbox helper: create a public token and exchange it so the developer can simulate a linked item.
+    
+    const usernames = ["user_credit_bonus", "user_credit_profile_good", "user_credit_profile_excellent", "user_good", "user_credit_profile_poor"][Math.floor(Math.random() * 5)];
     const sandboxResp = await plaidClient.sandboxPublicTokenCreate({
       institution_id: "ins_109508",
       initial_products: ["transactions"],
+      options:{
+        override_username: usernames,
+        override_password: "pass_good"
+      }
     });
+    
     const publicToken = sandboxResp.data.public_token;
     const exchangeResp = await plaidClient.itemPublicTokenExchange({ public_token: publicToken });
     const accessToken = exchangeResp.data.access_token;
@@ -119,10 +123,10 @@ router.get("/transactions", auth, async (req, res) => {
       const parts = String(period).split('-');
       if (parts.length === 2) {
         const year = parseInt(parts[0], 10);
-        const monthIndex = parseInt(parts[1], 10) - 1; // 0-based
-        if (!Number.isNaN(year) && monthIndex >= 0 && monthIndex <= 11) {
-          const start = new Date(year, monthIndex, 1);
-          const end = new Date(year, monthIndex + 1, 0); // last day of month
+        const month = parseInt(parts[1], 10); // 1-based (1=Jan, 11=Nov)
+        if (!Number.isNaN(year) && month >= 1 && month <= 12) {
+          const start = new Date(Date.UTC(year, month - 1, 1));
+          const end = new Date(Date.UTC(year, month, 0)); // day 0 of next month = last day of current month
           start_date = start.toISOString().slice(0, 10);
           end_date = end.toISOString().slice(0, 10);
         }
@@ -157,7 +161,20 @@ router.get("/transactions", auth, async (req, res) => {
     }
 
     // Normalize and filter transactions by category if requested
+    // Also exclude income transactions (negative amounts in Plaid indicate credits/income)
+    // And strictly enforce the month when `period=YYYY-MM` is provided
     const filtered = allTransactions.filter((tx) => {
+      // Enforce strict month match on POSTED date only to match UI
+      if (period) {
+        const posted = tx && tx.date ? String(tx.date) : '';
+        const txMonth = posted.slice(0, 7);
+        if (txMonth !== period) return false;
+      }
+
+      // Skip income transactions (amount < 0)
+      const amt = typeof tx.amount === 'number' ? tx.amount : Number(tx.amount) || 0;
+      if (amt < 0) return false;
+
       if (!categoryFilter) return true;
       const cat = (tx.personal_finance_category && tx.personal_finance_category.primary) ||
         (Array.isArray(tx.category) ? tx.category.join(', ') : tx.category) || '';
@@ -171,189 +188,34 @@ router.get("/transactions", auth, async (req, res) => {
     const totals = { count: filtered.length, total_amount: 0, by_category: {} };
     for (const tx of filtered) {
       const amt = typeof tx.amount === 'number' ? tx.amount : Number(tx.amount) || 0;
-      totals.total_amount += amt;
+      totals.total_amount += amt; 
       const cat = (tx.personal_finance_category && tx.personal_finance_category.primary) ||
         (Array.isArray(tx.category) ? tx.category.join(', ') : tx.category) || 'Uncategorized';
       const key = String(cat);
       totals.by_category[key] = (totals.by_category[key] || 0) + amt;
     }
 
-    // Respond with period metadata + transactions
-    return res.json({ period: period || null, start_date, end_date, transactions: filtered, totals });
+    // Include goal for this period if it exists
+    let goal = null;
+    if (period) {
+      const userGoal = user.monthlyGoals?.find((g) => g.period === period);
+      if (userGoal) {
+        goal = {
+          amount: userGoal.amount,
+          spent: totals.total_amount,
+          remaining: userGoal.amount - totals.total_amount,
+          percentage: (totals.total_amount / userGoal.amount) * 100,
+        };
+      }
+    }
+
+    // Respond with period metadata + transactions + goal progress
+    return res.json({ period: period || null, start_date, end_date, transactions: filtered, totals, goal });
   } catch (err) {
     console.error("Error fetching transactions:", err);
     res.status(500).json({ error: "Failed to fetch transactions" });
   }
 });
-
-// // Sandbox-only: simulate multiple credit cards + transactions
-// router.post("/sandbox/cards-and-transactions", auth, async (req, res) => {
-//   try {
-//     // 1. Create a sandbox Item with transactions
-//     const publicTokenResponse = await plaidClient.sandboxPublicTokenCreate({
-//       institution_id: "ins_109508", // First Platypus Bank
-//       initial_products: ["transactions"],
-//     });
-
-//     const public_token = publicTokenResponse.data.public_token;
-
-//     // 2. Exchange for access_token
-//     const exchangeResponse = await plaidClient.itemPublicTokenExchange({ public_token });
-//     const access_token = exchangeResponse.data.access_token;
-
-//     // 3. Get accounts and filter for credit cards
-//     const accountsResponse = await plaidClient.accountsGet({ access_token });
-//     const creditCardIds = accountsResponse.data.accounts
-//       .filter((acct) => acct.subtype === "credit card")
-//       .map((acct) => acct.account_id);
-
-//     // 4. Sync transactions (no cursor = full history)
-//     let cursor = null;
-//     let added = [];
-//     let hasMore = true;
-
-//     while (hasMore) {
-//       const response = await plaidClient.transactionsSync({ access_token, cursor });
-//       const data = response.data;
-
-//       added = added.concat(data.added);
-//       cursor = data.next_cursor;
-//       hasMore = data.has_more;
-//     }
-
-//     // 5. Filter for credit card transactions only
-//     const creditCardTx = added.filter((tx) => creditCardIds.includes(tx.account_id));
-
-//     res.json({
-//       message: "Synced sandbox credit card transactions",
-//       transactions: creditCardTx,
-//     });
-//   } catch (err) {
-//     console.error("Sync error:", err.response?.data || err);
-//     res.status(500).json({ error: "Failed to sync transactions" });
-//   }
-// });
-
-// added from quickstart sandbox
-// probably need to have sandbox users implemented for these to work
-
-
-// // Retrieve Transactions for an Item
-// // https://plaid.com/docs/#transactions
-// app.get('/api/transactions', function (request, response, next) {
-//   Promise.resolve()
-//     .then(async function () {
-//       // Set cursor to empty to receive all historical updates
-//       let cursor = null;
-
-//       // New transaction updates since "cursor"
-//       let added = [];
-//       let modified = [];
-//       // Removed transaction ids
-//       let removed = [];
-//       let hasMore = true;
-//       // Iterate through each page of new transaction updates for item
-//       while (hasMore) {
-//         const request = {
-//           access_token: ACCESS_TOKEN,
-//           cursor: cursor,
-//         };
-//         const response = await client.transactionsSync(request)
-//         const data = response.data;
-
-//         // If no transactions are available yet, wait and poll the endpoint.
-//         // Normally, we would listen for a webhook, but the Quickstart doesn't
-//         // support webhooks. For a webhook example, see
-//         // https://github.com/plaid/tutorial-resources or
-//         // https://github.com/plaid/pattern
-//         cursor = data.next_cursor;
-//         if (cursor === "") {
-//           await sleep(2000);
-//           continue;
-//         }
-
-//         // Add this page of results
-//         added = added.concat(data.added);
-//         modified = modified.concat(data.modified);
-//         removed = removed.concat(data.removed);
-//         hasMore = data.has_more;
-
-//         prettyPrintResponse(response);
-//       }
-
-//       const compareTxnsByDateAscending = (a, b) => (a.date > b.date) - (a.date < b.date);
-//       // Return the 8 most recent transactions
-//       const recently_added = [...added].sort(compareTxnsByDateAscending).slice(-8);
-//       response.json({ latest_transactions: recently_added });
-//     })
-//     .catch(next);
-// });
-
-
-// // Retrieve real-time Balances for each of an Item's accounts
-// // https://plaid.com/docs/#balance
-// app.get('/api/balance', function (request, response, next) {
-//   Promise.resolve()
-//     .then(async function () {
-//       const balanceResponse = await client.accountsBalanceGet({
-//         access_token: ACCESS_TOKEN,
-//       });
-//       prettyPrintResponse(balanceResponse);
-//       response.json(balanceResponse.data);
-//     })
-//     .catch(next);
-// });
-
-// app.get('/api/statements', function (request, response, next) {
-//   Promise.resolve()
-//     .then(async function () {
-//       const statementsListResponse = await client.statementsList({ access_token: ACCESS_TOKEN });
-//       prettyPrintResponse(statementsListResponse);
-//       const pdfRequest = {
-//         access_token: ACCESS_TOKEN,
-//         statement_id: statementsListResponse.data.accounts[0].statements[0].statement_id
-//       };
-
-//       const statementsDownloadResponse = await client.statementsDownload(pdfRequest, {
-//         responseType: 'arraybuffer',
-//       });
-//       prettyPrintResponse(statementsDownloadResponse);
-//       response.json({
-//         json: statementsListResponse.data,
-//         pdf: statementsDownloadResponse.data.toString('base64'),
-//       });
-//     })
-//     .catch(next);
-// });
-
-
-// // Retrieve information about an Item
-// // https://plaid.com/docs/#retrieve-item
-// app.get('/api/item', function (request, response, next) {
-//   Promise.resolve()
-//     .then(async function () {
-//       // Pull the Item - this includes information about available products,
-//       // billed products, webhook information, and more.
-//       const itemResponse = await client.itemGet({
-//         access_token: ACCESS_TOKEN,
-//       });
-//       // Also pull information about the institution
-//       const configs = {
-//         institution_id: itemResponse.data.item.institution_id,
-//         country_codes: PLAID_COUNTRY_CODES,
-//       };
-//       const instResponse = await client.institutionsGetById(configs);
-//       prettyPrintResponse(itemResponse);
-//       response.json({
-//         item: itemResponse.data.item,
-//         institution: instResponse.data.institution,
-//       });
-//     })
-//     .catch(next);
-// });
-
-
-
 
 
 
