@@ -54,22 +54,22 @@ router.post("/create_link_token", auth, async (req, res) => {
     await User.findByIdAndUpdate(userId, { $push: { plaidItemIds: sandboxResp.data.item_id } });
 
     // benefactor link to primary user
-    if (benefactorUsername) {
-      const benefactorUser = await User.findOne({ username: benefactorUsername });
+    // if (benefactorUsername) {
+    //   const benefactorUser = await User.findOne({ username: benefactorUsername });
 
-      if (benefactorUser) {
-        await User.findByIdAndUpdate(userId, {
-          $addToSet: { benefactor: benefactorUsername },
-        });
+    //   if (benefactorUser) {
+    //     await User.findByIdAndUpdate(userId, {
+    //       $addToSet: { benefactor: benefactorUsername },
+    //     });
 
-        await User.findByIdAndUpdate(benefactorUser._id, {
-          $addToSet: {
-            plaidAccessTokens: accessToken,
-            plaidItemIds: itemId,
-          },
-        });
-      }
-    }
+    //     await User.findByIdAndUpdate(benefactorUser._id, {
+    //       $addToSet: {
+    //         plaidAccessTokens: accessToken,
+    //         plaidItemIds: itemId,
+    //       },
+    //     });
+    //   }
+    // }
 
   } catch (err) {
     console.error("Error creating link token:", err);
@@ -367,6 +367,40 @@ router.get("/accounts", auth, async (req, res) => {
     });
   }
 });
+
+router.post("/link_benefactor", auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { benefactorUsername } = req.body;
+
+    const primaryUser = await User.findById(userId);
+    const benefactorUser = await User.findOne({ username: benefactorUsername });
+
+    if (!benefactorUser) {
+      return res.status(404).json({ message: "Benefactor not found" });
+    }
+
+    // Add benefactor to primary user
+    await User.findByIdAndUpdate(primaryUser._id, {
+      $addToSet: { benefactor: benefactorUsername },
+    });
+
+    // Give benefactor all existing primary tokens
+    await User.findByIdAndUpdate(benefactorUser._id, {
+      $addToSet: {
+        plaidAccessTokens: { $each: primaryUser.plaidAccessTokens },
+        plaidItemIds: { $each: primaryUser.plaidItemIds },
+      },
+    });
+
+    res.json({ message: "Benefactor linked successfully" });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Unable to link benefactor" });
+  }
+});
+
 
 
 

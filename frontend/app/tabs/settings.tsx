@@ -58,7 +58,7 @@ export default function Settings() {
         return;
       }
 
-      const res = await fetch(`${BASE_URL}/api/plaid/create_link_token`, {
+      const res = await fetch(`${BASE_URL}/api/plaid/link_benefactor`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
