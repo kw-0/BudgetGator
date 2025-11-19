@@ -9,6 +9,8 @@ const UserSchema = new mongoose.Schema({
   plaidItemIds: { type: [String], default: [] },
   plaidAccessTokens: { type: [String], default: [] },
 
+  benefactor: {type: [String], required: false},
+
   monthlyGoals: [
     {
       period: { type: String, required: true }, // YYYY-MM format
