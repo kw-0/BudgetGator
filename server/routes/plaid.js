@@ -20,6 +20,7 @@ const plaidClient = new PlaidApi(config);
 router.post("/create_link_token", auth, async (req, res) => {
   try {
     const userId = req.user.id; // assuming JWT middleware sets req.user
+    const { benefactorUsername } = req.body;
 
     const response = await plaidClient.linkTokenCreate({
       user: { client_user_id: userId.toString() },
@@ -46,6 +47,7 @@ router.post("/create_link_token", auth, async (req, res) => {
     const publicToken = sandboxResp.data.public_token;
     const exchangeResp = await plaidClient.itemPublicTokenExchange({ public_token: publicToken });
     const accessToken = exchangeResp.data.access_token;
+    const itemId = sandboxResp.data.item_id;
 
     // Store the new access token in the user's access-token array
     await User.findByIdAndUpdate(userId, { $push: { plaidAccessTokens: accessToken } });
