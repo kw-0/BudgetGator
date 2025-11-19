@@ -380,12 +380,10 @@ router.post("/link_benefactor", auth, async (req, res) => {
       return res.status(404).json({ message: "Benefactor not found" });
     }
 
-    // Add benefactor to primary user
     await User.findByIdAndUpdate(primaryUser._id, {
       $addToSet: { benefactor: benefactorUsername },
     });
 
-    // Give benefactor all existing primary tokens
     await User.findByIdAndUpdate(benefactorUser._id, {
       $addToSet: {
         plaidAccessTokens: { $each: primaryUser.plaidAccessTokens },
