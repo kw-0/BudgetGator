@@ -425,6 +425,16 @@ export default function Dashboard() {
          Authorization: `Bearer ${token}`,
        },
      });
+     
+     if (!res.ok) {
+       const errorData = await res.json().catch(() => ({}));
+       if (errorData.code === "token_expired") {
+         await handleTokenExpired(router);
+         return;
+       }
+       throw new Error(errorData.message || "Failed to create link token");
+     }
+     
      const data = await res.json();
      if (!data.link_token) throw new Error("No link token received");
      const redirectUri = `${BASE_URL}/api/plaid/return`;
@@ -508,6 +518,10 @@ export default function Dashboard() {
 
      if (!res.ok) {
        const errorData = await res.json().catch(() => ({}));
+       if (errorData.code === "token_expired") {
+         await handleTokenExpired(router);
+         return;
+       }
        console.log("Fetch failed:", errorData);
        Alert.alert("Error", errorData.message || "Failed to fetch transactions");
        return;

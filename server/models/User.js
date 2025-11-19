@@ -4,7 +4,8 @@ const UserSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  isPrimaryUser: { type: Boolean, required: true },
+  // Default primary for legacy users without this field; new registrations must send explicit role
+  isPrimaryUser: { type: Boolean, required: true, default: true },
 
   plaidItemIds: { type: [String], default: [] },
   plaidAccessTokens: { type: [String], default: [] },
