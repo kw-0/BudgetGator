@@ -91,4 +91,34 @@ router.get("/", auth, async (req, res) => {
   }
 });
 
+// Delete a goal for a specific period
+router.delete("/:period", auth, async (req, res) => {
+  try {
+    const { period } = req.params;
+
+    if (!/^\d{4}-\d{2}$/.test(period)) {
+      return res.status(400).json({ error: "Period must be in YYYY-MM format" });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const goalIndex = user.monthlyGoals.findIndex((g) => g.period === period);
+    
+    if (goalIndex === -1) {
+      return res.status(404).json({ error: "Goal not found for this period" });
+    }
+
+    user.monthlyGoals.splice(goalIndex, 1);
+    await user.save();
+
+    res.json({ message: "Goal deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting goal:", err);
+    res.status(500).json({ error: "Failed to delete goal" });
+  }
+});
+
 module.exports = router;

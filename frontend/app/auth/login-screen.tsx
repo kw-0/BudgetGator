@@ -75,8 +75,7 @@ export default function LoginScreen() {
         placeholderTextColor="#999"
       />
 
-      <Button title="Create Account" onPress={() => router.push("./create-acct")} 
-/>
+      <Button title="Create Account" onPress={() => router.push("./create-acct")} />
       <Button title="Login" onPress={handleLogin} />
     </View>
   );

@@ -69,6 +69,14 @@ export default function Settings() {
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (data.code === "token_expired") {
+          await AsyncStorage.removeItem("token");
+          await AsyncStorage.removeItem("userId");
+          Alert.alert("Session Expired", "Please log in again", [
+            { text: "OK", onPress: () => router.replace("/auth/login-screen") },
+          ]);
+          return;
+        }
         Alert.alert("Error", data.error || "Failed to link benefactor");
         return;
       }

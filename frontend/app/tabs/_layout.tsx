@@ -4,8 +4,6 @@ import React from "react";
 
 export default function TabsLayout() {
 
-  const isPrimaryUser = true; // Placeholder for actual user role check
-
   return (
     <Tabs
       screenOptions={({ route }) => ({
@@ -51,21 +49,11 @@ export default function TabsLayout() {
           tabBarLabel: "Dashboard",
         }}
       />
-      {/* {isPrimaryUser && (
-        <Tabs.Screen
-          name="goals"
-          options={{
-            title: "Goals",
-            tabBarLabel: "Goals",
-          }}
-        />
-      )} */}
       <Tabs.Screen
         name="goals"
         options={{
           title: "Goals",
           tabBarLabel: "Goals",
-          href: isPrimaryUser ? "./goals" : null, // <-- THE IMPORTANT PART
         }}
       />
       <Tabs.Screen
