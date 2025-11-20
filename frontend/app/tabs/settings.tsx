@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   Button,
@@ -12,28 +12,40 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-// import DateTimePickerModal from "react-native-modal-datetime-picker";
-// import { WebView } from "react-native-webview";
-// import Dash from "./dash";
 
 const BASE_URL = Constants.expoConfig.extra.API_URL;
-
-  //  export default function Settings() {
-  //    return (
-  //      <View style={styles.container}>
-  //        <Text style={styles.text}>This is the Settings screen 🛠️</Text>
-  //      </View>
-  //    );
-  //  }
-
-  //  const styles = StyleSheet.create({
-  //    container: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#f9f9f9" },
-  //    text: { fontSize: 18, fontWeight: "bold" },
-  //  });
 
 
 export default function Settings() {
   const router = useRouter();
+
+  const [primaryUser, setPrimaryUser] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchPrimaryUser = async () => {
+      const value = await AsyncStorage.getItem("isPrimaryUser");
+      setPrimaryUser(value);
+    };
+    fetchPrimaryUser();
+  }, []);
+
+  if (primaryUser !== "true") {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.text}>You are a Benefactor.</Text>
+        <Button
+          title="Log Out"
+          onPress={async () => {
+            await AsyncStorage.removeItem("token");
+            await AsyncStorage.removeItem("userId");
+            router.replace("/auth/login-screen");
+          }}
+          color="#ff3b30"
+        />
+      </View>
+    );
+  }
+
   const [modalVisible, setModalVisible] = useState(false);
   const [benefactorUsername, setBenefactorUsername] = useState("");
 
@@ -89,16 +101,6 @@ export default function Settings() {
       Alert.alert("Error", "Server error while linking benefactor.");
     }
   };
-
-//   return (
-//     <View style={styles.container}>
-//       <Text style={styles.title}>Settings</Text>
-//       <View style={{ marginTop: 20, width: 200 }}>
-        
-//       </View>
-//     </View>
-//   );
-// }
 
   return (
     <View style={styles.container}>
