@@ -27,6 +27,10 @@ export default function Settings() {
   const [plaidVisible, setPlaidVisible] = useState(false);
   const [linkToken, setLinkToken] = useState("");
 
+  // NEW STATE for Delink-by-username
+  const [delinkModalVisible, setDelinkModalVisible] = useState(false);
+  const [delinkBenefactorUsername, setDelinkBenefactorUsername] = useState("");
+
   const handleLogout = async () => {
     try {
       await AsyncStorage.removeItem("token");
@@ -136,17 +140,57 @@ export default function Settings() {
     }
   };
 
+  // delinkBenefactor now accepts a username (from modal input)
+  const delinkBenefactor = async (username) => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        Alert.alert("Session", "Please log in again");
+        router.replace("/auth/login-screen");
+        return;
+      }
+
+      const res = await fetch(`${BASE_URL}/api/plaid/delink_benefactor`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ benefactorUsername: username }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        Alert.alert("Error", data.error || "Failed to delink benefactor");
+        return;
+      }
+
+      Alert.alert("Success", "Benefactor delinked successfully!");
+      // Clear and hide modal if used
+      setDelinkModalVisible(false);
+      setDelinkBenefactorUsername("");
+    } catch (err) {
+      console.error("Error delinking benefactor:", err);
+      Alert.alert("Error", "Server error while delinking benefactor.");
+    }
+  };
+
+
   return (
     <View style={styles.container}>
       <Text style={styles.text}>Settings</Text>
 
-      {/* ⭐ NEW - LINK BANK ACCOUNT BUTTON */}
+      {/* LINK BANK ACCOUNT BUTTON */}
       <View style={{ marginTop: 20 }}>
         <Button title="Link Bank Account" onPress={linkBank} />
       </View>
 
       <View style={{ marginTop: 20 }}>
         <Button title="Add Benefactor" onPress={() => setModalVisible(true)} />
+      </View>
+
+      <View style={{ marginTop: 20 }}>
+        <Button title="Delink Benefactor" onPress={() => setDelinkModalVisible(true)} color="#ff3b30" />
       </View>
 
       <View style={{ marginTop: 20, width: 200 }}>
@@ -182,7 +226,39 @@ export default function Settings() {
         </View>
       </Modal>
 
-      {/* ⭐ NEW — PLAID LINK WEBVIEW (modal popup) */}
+      {/* Modal for delinking benefactor */}
+      <Modal visible={delinkModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Delink Benefactor</Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Enter benefactor username to delink"
+              value={delinkBenefactorUsername}
+              onChangeText={setDelinkBenefactorUsername}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setDelinkModalVisible(false)}
+              >
+                <Text style={styles.btnText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.saveBtn, { backgroundColor: "#ff3b30" }]}
+                onPress={() => delinkBenefactor(delinkBenefactorUsername)}
+              >
+                <Text style={styles.btnText}>Delink</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* PLAID LINK WEBVIEW (modal popup) */}
       <Modal visible={plaidVisible} animationType="slide">
         <View style={{ flex: 1 }}>
           {linkToken ? (

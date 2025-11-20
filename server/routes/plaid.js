@@ -400,6 +400,46 @@ router.post("/link_benefactor", auth, async (req, res) => {
 });
 
 
+router.post("/delink_benefactor", auth, async (req, res) => {
+  try {
+    const { benefactorUsername } = req.body;
+    if (!benefactorUsername) {
+      return res.status(400).json({ error: "Benefactor username is required" });
+    }
+
+    const primaryUser = await User.findById(req.user.id);
+    if (!primaryUser) {
+      return res.status(404).json({ error: "Primary user not found" });
+    }
+
+    const benefactorUser = await User.findOne({ username: benefactorUsername });
+    if (!benefactorUser) {
+      return res.status(404).json({ error: "Benefactor user not found" });
+    }
+
+    // Remove benefactor from primary user's benefactor array
+    primaryUser.benefactor = primaryUser.benefactor.filter(
+      (b) => b !== benefactorUsername
+    );
+    await primaryUser.save();
+
+    // revoke access token(s) from benefactor
+    await User.updateOne(
+      { _id: benefactorUser._id },
+      {
+        $pull: {
+          plaidAccessTokens: { $in: primaryUser.plaidAccessTokens },
+          plaidItemIds: { $in: primaryUser.plaidItemIds },
+        },
+      }
+    );
+
+    res.json({ message: "Benefactor delinked successfully" });
+  } catch (err) {
+    console.error("Error delinking benefactor:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
 
 
