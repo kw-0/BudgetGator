@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
+import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -16,8 +17,32 @@ import { WebView } from "react-native-webview";
 const BASE_URL = Constants.expoConfig.extra.API_URL;
 const screenWidth = Dimensions.get("window").width;
 
+// Type definitions to satisfy arithmetic operations
+interface RawTransaction {
+  amount?: number | string;
+  category?: string | string[];
+  personal_finance_category?: { primary?: string };
+  name?: string;
+  merchant_name?: string;
+  transaction_date?: string;
+  date?: string;
+  [key: string]: any;
+}
+
+interface NormalizedTransaction extends RawTransaction {
+  amount: number;
+  category: string;
+}
+
+interface ChartDatum {
+  category: string;
+  amount: number;
+  originalCategories?: string[];
+}
+
 export default function AnalysisScreen() {
-  const [transactions, setTransactions] = useState([]);
+  const router = useRouter();
+  const [transactions, setTransactions] = useState<RawTransaction[]>([]);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [loading, setLoading] = useState(false);
   const [breakdownOpen, setBreakdownOpen] = useState(true);
@@ -54,6 +79,18 @@ export default function AnalysisScreen() {
         const res = await fetch(`${BASE_URL}/api/plaid/accounts`, {
           headers: { Authorization: `Bearer ${token}` },
         });
+
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          if (errorData.code === 'token_expired') {
+            await AsyncStorage.multiRemove(['token','userId']);
+            alert('Session expired. Please log in again.');
+            router.replace('/auth/login-screen');
+            return;
+          }
+          console.error('Accounts fetch failed', errorData);
+          return;
+        }
 
         const data = await res.json();
         setAccounts(data.accounts || []);
@@ -96,9 +133,15 @@ export default function AnalysisScreen() {
       );
 
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorData: any = {};
+        try { errorData = await response.json(); } catch {}
+        if (errorData.code === 'token_expired') {
+          await AsyncStorage.multiRemove(['token','userId']);
+          alert('Session expired. Please log in again.');
+          router.replace('/auth/login-screen');
+          return;
+        }
         console.error("API Error:", response.status, response.statusText, errorData);
-        setLoading(false);
         return;
       }
 
@@ -111,7 +154,7 @@ export default function AnalysisScreen() {
     }
   };
 
-  const normalizeTransaction = (raw) => {
+  const normalizeTransaction = (raw: RawTransaction): NormalizedTransaction => {
     const category =
       raw.personal_finance_category?.primary ||
       (Array.isArray(raw.category) ? raw.category.join(", ") : raw.category) ||
@@ -128,33 +171,32 @@ export default function AnalysisScreen() {
       .replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
-  const chartData = useMemo(() => {
-    const categoryTotals = {};
+  const chartData: ChartDatum[] = useMemo(() => {
+    const categoryTotals: Record<string, number> = {};
     transactions.forEach((t) => {
       const normalized = normalizeTransaction(t);
-      categoryTotals[normalized.category] =
-        (categoryTotals[normalized.category] || 0) + Math.abs(normalized.amount);
+      const prev = categoryTotals[normalized.category] || 0;
+      categoryTotals[normalized.category] = prev + Math.abs(normalized.amount);
     });
     return Object.entries(categoryTotals)
       .map(([category, amount]) => ({ category, amount }))
       .sort((a, b) => b.amount - a.amount);
   }, [transactions]);
 
-  const totalSpending = useMemo(
+  const totalSpending: number = useMemo(
     () => chartData.reduce((sum, item) => sum + item.amount, 0),
     [chartData]
   );
 
-  const displayData = useMemo(() => {
+  const displayData: ChartDatum[] = useMemo(() => {
     if (!totalSpending || totalSpending === 0) return chartData;
 
-    const main = [];
+    const main: ChartDatum[] = [];
     let otherAmount = 0;
-    const otherCategories = [];
+    const otherCategories: string[] = [];
 
     chartData.forEach((item) => {
       const pct = (item.amount / totalSpending) * 100;
-
       if (pct < 2) {
         otherAmount += item.amount;
         otherCategories.push(item.category);
@@ -163,7 +205,6 @@ export default function AnalysisScreen() {
       }
     });
 
-    // Only add "Other" if it actually has content
     if (otherAmount > 0) {
       main.push({
         category: "Other",
@@ -171,21 +212,18 @@ export default function AnalysisScreen() {
         originalCategories: otherCategories,
       });
     }
-
     return main.sort((a, b) => b.amount - a.amount);
   }, [chartData, totalSpending]);
 
-  const filteredTransactions = useMemo(() => {
+  const filteredTransactions = useMemo<NormalizedTransaction[]>(() => {
     if (!selectedCategory) return [];
     const normalized = transactions.map((t) => normalizeTransaction(t));
     if (selectedCategory === "All") return normalized;
-
     const disp = displayData.find((d) => d.category === selectedCategory);
     if (disp && disp.originalCategories && Array.isArray(disp.originalCategories)) {
       const setCats = new Set(disp.originalCategories);
       return normalized.filter((t) => setCats.has(t.category));
     }
-
     return normalized.filter((t) => t.category === selectedCategory);
   }, [transactions, selectedCategory, displayData]);
 
