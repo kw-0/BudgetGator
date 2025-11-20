@@ -12,30 +12,20 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-// import DateTimePickerModal from "react-native-modal-datetime-picker";
-// import { WebView } from "react-native-webview";
-// import Dash from "./dash";
+import { WebView } from "react-native-webview";
 
 const BASE_URL = Constants.expoConfig.extra.API_URL;
 
-  //  export default function Settings() {
-  //    return (
-  //      <View style={styles.container}>
-  //        <Text style={styles.text}>This is the Settings screen 🛠️</Text>
-  //      </View>
-  //    );
-  //  }
-
-  //  const styles = StyleSheet.create({
-  //    container: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#f9f9f9" },
-  //    text: { fontSize: 18, fontWeight: "bold" },
-  //  });
-
-
 export default function Settings() {
   const router = useRouter();
+
+  // Existing State
   const [modalVisible, setModalVisible] = useState(false);
   const [benefactorUsername, setBenefactorUsername] = useState("");
+
+  // NEW STATE for Plaid Link
+  const [plaidVisible, setPlaidVisible] = useState(false);
+  const [linkToken, setLinkToken] = useState("");
 
   const handleLogout = async () => {
     try {
@@ -67,16 +57,8 @@ export default function Settings() {
         body: JSON.stringify({ benefactorUsername }),
       });
 
-      const data = await res.json().catch(() => ({}));
+      const data = await res.json();
       if (!res.ok) {
-        if (data.code === "token_expired") {
-          await AsyncStorage.removeItem("token");
-          await AsyncStorage.removeItem("userId");
-          Alert.alert("Session Expired", "Please log in again", [
-            { text: "OK", onPress: () => router.replace("/auth/login-screen") },
-          ]);
-          return;
-        }
         Alert.alert("Error", data.error || "Failed to link benefactor");
         return;
       }
@@ -84,35 +66,94 @@ export default function Settings() {
       Alert.alert("Success", "Benefactor linked successfully!");
       setModalVisible(false);
       setBenefactorUsername("");
+
     } catch (err) {
       console.error("Error linking benefactor:", err);
       Alert.alert("Error", "Server error while linking benefactor.");
     }
   };
 
-//   return (
-//     <View style={styles.container}>
-//       <Text style={styles.title}>Settings</Text>
-//       <View style={{ marginTop: 20, width: 200 }}>
-        
-//       </View>
-//     </View>
-//   );
-// }
+  const linkBank = async () => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        Alert.alert("Session Expired", "Please log in again.");
+        router.replace("/auth/login-screen");
+        return;
+      }
+
+      const res = await fetch(`${BASE_URL}/api/plaid/create_link_token`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}), // no benefactor for normal bank linking
+      });
+
+      const data = await res.json();
+      if (!res.ok) return Alert.alert("Error", data.error || "Could not start bank linking");
+
+      setLinkToken(data.link_token);
+      setPlaidVisible(true);
+
+    } catch (err) {
+      console.error("Plaid link error:", err);
+      Alert.alert("Error", "Unable to start bank linking");
+    }
+  };
+
+  // Handle message coming from Plaid `/return` HTML
+  const onWebviewMessage = async (event) => {
+    try {
+      const msg = JSON.parse(event.nativeEvent.data);
+      const public_token = msg?.public_token;
+
+      if (!public_token) return;
+
+      const token = await AsyncStorage.getItem("token");
+
+      const res = await fetch(`${BASE_URL}/api/plaid/exchange_public_token`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ public_token }),
+      });
+
+      if (!res.ok) {
+        Alert.alert("Error", "Failed to exchange public token");
+        return;
+      }
+
+      Alert.alert("Success", "Bank account linked!");
+      setPlaidVisible(false);
+
+    } catch (err) {
+      console.error("WebView message error:", err);
+      Alert.alert("Error", "Failed linking bank account.");
+    }
+  };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>This is the Settings screen</Text>
+      <Text style={styles.text}>Settings</Text>
 
-      <View style={{ marginTop: 20, width: 200 }}>
-          <Button title="Log Out" onPress={handleLogout} color="#ff3b30" />
+      {/* ⭐ NEW - LINK BANK ACCOUNT BUTTON */}
+      <View style={{ marginTop: 20 }}>
+        <Button title="Link Bank Account" onPress={linkBank} />
       </View>
 
       <View style={{ marginTop: 20 }}>
         <Button title="Add Benefactor" onPress={() => setModalVisible(true)} />
       </View>
 
-      {/* Modal for entering username */}
+      <View style={{ marginTop: 20, width: 200 }}>
+        <Button title="Log Out" onPress={handleLogout} color="#ff3b30" />
+      </View>
+
+      {/* Modal for adding benefactor */}
       <Modal visible={modalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
@@ -126,7 +167,10 @@ export default function Settings() {
             />
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setModalVisible(false)}
+              >
                 <Text style={styles.btnText}>Cancel</Text>
               </TouchableOpacity>
 
@@ -137,6 +181,32 @@ export default function Settings() {
           </View>
         </View>
       </Modal>
+
+      {/* ⭐ NEW — PLAID LINK WEBVIEW (modal popup) */}
+      <Modal visible={plaidVisible} animationType="slide">
+        <View style={{ flex: 1 }}>
+          {linkToken ? (
+            <WebView
+              source={{
+                uri: `https://cdn.plaid.com/link/v2/stable/link.html?token=${linkToken}`,
+              }}
+              onMessage={onWebviewMessage}
+            />
+          ) : (
+            <Text style={{ marginTop: 100, textAlign: "center" }}>Loading…</Text>
+          )}
+
+          <TouchableOpacity
+            style={{ padding: 20, backgroundColor: "#ff3b30" }}
+            onPress={() => setPlaidVisible(false)}
+          >
+            <Text style={{ color: "white", textAlign: "center", fontWeight: "bold" }}>
+              Close
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
     </View>
   );
 }
