@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react"; // add useeffect
 import {
   Alert,
   Button,
@@ -19,35 +19,20 @@ const BASE_URL = Constants.expoConfig.extra.API_URL;
 export default function Settings() {
   const router = useRouter();
 
-  const [primaryUser, setPrimaryUser] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchPrimaryUser = async () => {
-      const value = await AsyncStorage.getItem("isPrimaryUser");
-      setPrimaryUser(value);
-    };
-    fetchPrimaryUser();
-  }, []);
-
-  if (primaryUser !== "true") {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.text}>You are a Benefactor.</Text>
-        <Button
-          title="Log Out"
-          onPress={async () => {
-            await AsyncStorage.removeItem("token");
-            await AsyncStorage.removeItem("userId");
-            router.replace("/auth/login-screen");
-          }}
-          color="#ff3b30"
-        />
-      </View>
-    );
-  }
-
   const [modalVisible, setModalVisible] = useState(false);
   const [benefactorUsername, setBenefactorUsername] = useState("");
+  // change
+  const [isPrimaryUser, setIsPrimaryUser] = useState(null);
+
+  // Load user type on mount
+  useEffect(() => {
+    const loadUserType = async () => {
+      const value = await AsyncStorage.getItem("isPrimaryUser");
+      setIsPrimaryUser(value === "true");
+    };
+    loadUserType();
+  }, []);
+
 
   const handleLogout = async () => {
     try {
@@ -104,15 +89,31 @@ export default function Settings() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>This is the Settings screen</Text>
 
-      <View style={{ marginTop: 20, width: 200 }}>
-          <Button title="Log Out" onPress={handleLogout} color="#ff3b30" />
-      </View>
+       { /* change */}
+    {isPrimaryUser !== null && (
+      isPrimaryUser === false ? (
+        <>
+          <Text style={styles.text}>You're a benefactor</Text>
 
-      <View style={{ marginTop: 20 }}>
-        <Button title="Add Benefactor" onPress={() => setModalVisible(true)} />
-      </View>
+          <View style={{ marginTop: 20, width: 200 }}>
+            <Button title="Log Out" onPress={handleLogout} color="#ff3b30" />
+          </View>
+        </>
+      ) : (
+        <>
+          <Text style={styles.text}>This is the Settings screen</Text>
+
+          <View style={{ marginTop: 20, width: 200 }}>
+            <Button title="Log Out" onPress={handleLogout} color="#ff3b30" />
+          </View>
+
+          <View style={{ marginTop: 20 }}>
+            <Button title="Add Benefactor" onPress={() => setModalVisible(true)} />
+          </View>
+        </>
+      )
+    )} { /* change */}
 
       {/* Modal for entering username */}
       <Modal visible={modalVisible} transparent animationType="slide">

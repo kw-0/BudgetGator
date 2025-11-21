@@ -36,6 +36,17 @@ export default function LoginScreen() {
       console.log("Login successful:", data);
       await AsyncStorage.setItem("userId", data.user.id);
       await AsyncStorage.setItem("token", data.token);
+      
+
+      await AsyncStorage.setItem(
+      "isPrimaryUser",
+      data.user?.isPrimaryUser ? "true" : "false"
+    );
+
+    // // Verify it saved
+    // const check = await AsyncStorage.getItem("isPrimaryUser");
+    // console.log("Stored isPrimaryUser:", check);
+
 
       // Navigate to dashboard tab
       router.replace("/tabs");
@@ -75,7 +86,8 @@ export default function LoginScreen() {
         placeholderTextColor="#999"
       />
 
-      <Button title="Create Account" onPress={() => router.push("./create-acct")} />
+      <Button title="Create Account" onPress={() => router.push("./create-acct")} 
+/>
       <Button title="Login" onPress={handleLogin} />
     </View>
   );
