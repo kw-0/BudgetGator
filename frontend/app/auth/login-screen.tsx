@@ -36,6 +36,16 @@ export default function LoginScreen() {
       console.log("Login successful:", data);
       await AsyncStorage.setItem("userId", data.user.id);
       await AsyncStorage.setItem("token", data.token);
+      await AsyncStorage.setItem("username", data.user.username);
+
+      // get bool of isPrimaryUser and store as string
+      await AsyncStorage.setItem(
+      "isPrimaryUser",
+      data.user?.isPrimaryUser ? "true" : "false"
+    );
+
+    // const check = await AsyncStorage.getItem("isPrimaryUser");
+    // console.log("Stored isPrimaryUser:", check);
 
       // Navigate to dashboard tab
       router.replace("/tabs");

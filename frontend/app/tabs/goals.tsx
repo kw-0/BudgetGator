@@ -41,6 +41,18 @@ export default function Goals() {
     fetchGoals();
   }, []);
 
+  const [isPrimaryUser, setIsPrimaryUser] = useState(null);
+
+  // Load user type on mount
+  useEffect(() => {
+    const loadUserType = async () => {
+      const value = await AsyncStorage.getItem("isPrimaryUser");
+      setIsPrimaryUser(value === "true");
+    };
+    loadUserType();
+  }, []);
+
+
   async function fetchGoals() {
     try {
       setLoading(true);
@@ -252,6 +264,15 @@ export default function Goals() {
 
   return (
     <ScrollView style={styles.container}>
+      {isPrimaryUser !== null && (
+      isPrimaryUser === false ? (
+        <>
+          <Text style={{ fontSize: 20, fontWeight: "bold", marginTop: 150, textAlign: "center" }}>
+            As a benefactor, you don't have permission to set goals.
+          </Text>
+        </>
+      ) : (
+        <>
       <View style={styles.section}>
         <Text style={styles.title}>Set Monthly Spending Goal</Text>
         <Text style={styles.description}>
@@ -301,12 +322,15 @@ export default function Goals() {
           />
         )}
       </View>
+        </>
+      )
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f9f9f9", padding: 16 },
+  container: { flex: 1, backgroundColor: "#f9f9f9", padding: 16, paddingTop: 70 },
   section: { backgroundColor: "white", padding: 16, borderRadius: 8, marginBottom: 16 },
   title: { fontSize: 20, fontWeight: "bold", marginBottom: 12 },
   description: { fontSize: 14, color: "#666", marginBottom: 16, lineHeight: 20 },

@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react"; // add useeffect
 import {
   Alert,
   Button,
@@ -22,6 +22,27 @@ export default function Settings() {
   // Existing State
   const [modalVisible, setModalVisible] = useState(false);
   const [benefactorUsername, setBenefactorUsername] = useState("");
+
+  const [isPrimaryUser, setIsPrimaryUser] = useState(null); // NEW STATE to hold user role
+  // Load user type on mount
+  useEffect(() => {
+    const loadUserType = async () => {
+      const value = await AsyncStorage.getItem("isPrimaryUser");
+      setIsPrimaryUser(value === "true");
+    };
+    loadUserType();
+  }, []);
+
+  const [username, setUsername] = useState("");
+
+  useEffect(() => {
+    const loadUserInfo = async () => {
+      const storedUsername = await AsyncStorage.getItem("username");
+      setUsername(storedUsername || ""); // fallback to empty string if not found
+    };
+    loadUserInfo();
+  }, []);
+
 
   // NEW STATE for Plaid Link
   const [plaidVisible, setPlaidVisible] = useState(false);
@@ -176,55 +197,126 @@ export default function Settings() {
   };
 
 
+  // return (
+  //   <View style={styles.container}>
+  //     <Text style={styles.text}>Settings</Text>
+
+  //     {/* LINK BANK ACCOUNT BUTTON */}
+  //     <View style={{ marginTop: 20 }}>
+  //       <Button title="Link Bank Account" onPress={linkBank} />
+  //     </View>
+
+  //     <View style={{ marginTop: 20 }}>
+  //       <Button title="Add Benefactor" onPress={() => setModalVisible(true)} />
+  //     </View>
+
+  //     <View style={{ marginTop: 20 }}>
+  //       <Button title="Delink Benefactor" onPress={() => setDelinkModalVisible(true)} color="#ff3b30" />
+  //     </View>
+
+  //     <View style={{ marginTop: 20, width: 200 }}>
+  //       <Button title="Log Out" onPress={handleLogout} color="#ff3b30" />
+  //     </View>
+
+  //     {/* Modal for adding benefactor */}
+  //     <Modal visible={modalVisible} transparent animationType="slide">
+  //       <View style={styles.modalOverlay}>
+  //         <View style={styles.modalBox}>
+  //           <Text style={styles.modalTitle}>Add Benefactor</Text>
+
+  //           <TextInput
+  //             style={styles.input}
+  //             placeholder="Enter benefactor username"
+  //             value={benefactorUsername}
+  //             onChangeText={setBenefactorUsername}
+  //           />
+
+  //           <View style={styles.modalButtons}>
+  //             <TouchableOpacity
+  //               style={styles.cancelBtn}
+  //               onPress={() => setModalVisible(false)}
+  //             >
+  //               <Text style={styles.btnText}>Cancel</Text>
+  //             </TouchableOpacity>
+
+  //             <TouchableOpacity style={styles.saveBtn} onPress={linkBenefactor}>
+  //               <Text style={styles.btnText}>Link</Text>
+  //             </TouchableOpacity>
+  //           </View>
+  //         </View>
+  //       </View>
+  //     </Modal>
+
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>Settings</Text>
 
-      {/* LINK BANK ACCOUNT BUTTON */}
-      <View style={{ marginTop: 20 }}>
-        <Button title="Link Bank Account" onPress={linkBank} />
-      </View>
+    {isPrimaryUser !== null && (
+      isPrimaryUser === false ? (
+        // Benefactor UI
+        <>
+          <Text style={styles.text}>Hello, {username}!</Text>
+          <Text style={styles.text}>You're a benefactor</Text>
 
-      <View style={{ marginTop: 20 }}>
-        <Button title="Add Benefactor" onPress={() => setModalVisible(true)} />
-      </View>
-
-      <View style={{ marginTop: 20 }}>
-        <Button title="Delink Benefactor" onPress={() => setDelinkModalVisible(true)} color="#ff3b30" />
-      </View>
-
-      <View style={{ marginTop: 20, width: 200 }}>
-        <Button title="Log Out" onPress={handleLogout} color="#ff3b30" />
-      </View>
-
-      {/* Modal for adding benefactor */}
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Add Benefactor</Text>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Enter benefactor username"
-              value={benefactorUsername}
-              onChangeText={setBenefactorUsername}
-            />
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setModalVisible(false)}
-              >
-                <Text style={styles.btnText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.saveBtn} onPress={linkBenefactor}>
-                <Text style={styles.btnText}>Link</Text>
-              </TouchableOpacity>
-            </View>
+          <View style={{ marginTop: 20, width: 200 }}>
+            <Button title="Log Out" onPress={handleLogout} color="#ff3b30" />
           </View>
-        </View>
-      </Modal>
+        </>
+      ) : (
+        // Primary user UI
+        <>
+          <Text style={styles.text}>Hello, {username}!</Text>
+          <Text style={styles.text}>You're a Primary User</Text>
+          <Text style={styles.text}>Settings</Text>
+
+          {/* LINK BANK ACCOUNT BUTTON */}
+          <View style={{ marginTop: 20 }}>
+            <Button title="Link Bank Account" onPress={linkBank} />
+          </View>
+
+          {/* ADD BENEFFACTOR BUTTON */}
+          <View style={{ marginTop: 20 }}>
+            <Button title="Add Benefactor" onPress={() => setModalVisible(true)} />
+          </View>
+
+          {/* DELINK BENEFFACTOR BUTTON */}
+          <View style={{ marginTop: 20 }}>
+            <Button title="Delink Benefactor" onPress={() => setDelinkModalVisible(true)} color="#ff3b30" />
+          </View>
+
+          {/* LOG OUT BUTTON */}
+          <View style={{ marginTop: 20, width: 200 }}>
+            <Button title="Log Out" onPress={handleLogout} color="#ff3b30" />
+          </View>
+
+          {/* Modal for adding benefactor */}
+          <Modal visible={modalVisible} transparent animationType="slide">
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalBox}>
+                <Text style={styles.modalTitle}>Add Benefactor</Text>
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter benefactor username"
+                  value={benefactorUsername}
+                  onChangeText={setBenefactorUsername}
+                />
+
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={styles.cancelBtn}
+                    onPress={() => setModalVisible(false)}
+                  >
+                    <Text style={styles.btnText}>Cancel</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.saveBtn} onPress={linkBenefactor}>
+                    <Text style={styles.btnText}>Link</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+
 
       {/* Modal for delinking benefactor */}
       <Modal visible={delinkModalVisible} transparent animationType="slide">
@@ -282,7 +374,9 @@ export default function Settings() {
           </TouchableOpacity>
         </View>
       </Modal>
-
+      </>
+      )
+    )}
     </View>
   );
 }
