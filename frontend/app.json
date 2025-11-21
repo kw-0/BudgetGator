@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "extra": {
-      "API_URL": "https://budgetgator-production.up.railway.app"
+      "API_URL": "https://budgetgator-a8wf.onrender.com"
     },
     "ios": {
       "supportsTablet": true
